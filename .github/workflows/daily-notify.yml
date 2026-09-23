@@ -16,17 +16,22 @@ jobs:
           START="2026-09-23"
           TODAY=$(TZ='Asia/Ho_Chi_Minh' date +%Y-%m-%d)
           MEMBERS=("Tiến Dũng Dev" "Như Quỳnh" "Thành Luân" "Tiến Dũng GD" "Tuyết Nhung" "Trung Lê" "Mạnh Cường" "Nam Dev" "Hachi" "Thảo")
+          MEMBER_IDS=("1293753204303204493" "754344195866624101" "252118396324413454" "417632819641319425" "1230707475259592756" "525686404814995456" "559419038640504838" "1247012765713825840" "627470632430338048" "373664319155601418")
           n=${#MEMBERS[@]}
           diff_days=$(( ( $(date -d "$TODAY" +%s) - $(date -d "$START" +%s) ) / 86400 ))
           idx=$(( ((diff_days % n) + n) % n ))
           tomorrow_idx=$(( (idx+1) % n ))
           TODAY_VN=$(TZ='Asia/Ho_Chi_Minh' date +"%d/%m/%Y")
           TODAY_PERSON="${MEMBERS[$idx]}"
+          TODAY_ID="${MEMBER_IDS[$idx]}"
           TOMORROW_PERSON="${MEMBERS[$tomorrow_idx]}"
+          TOMORROW_ID="${MEMBER_IDS[$tomorrow_idx]}"
 
           python3 -c "
           import json
-          content = '🗑️ **Lịch đổ rác ngày ' + '''$TODAY_VN''' + '''**\n\nHôm nay là phiên đổ rác của: **''' + '''$TODAY_PERSON''' + '''**\nNgày mai: ''' + '''$TOMORROW_PERSON'''
+          content = ('🗑️ **Lịch đổ rác ngày ' + '''$TODAY_VN''' + '''**\n\n'''
+                      + 'Hôm nay là phiên đổ rác của: <@' + '''$TODAY_ID''' + '''> (**''' + '''$TODAY_PERSON''' + '''**)\n'''
+                      + 'Ngày mai: <@' + '''$TOMORROW_ID''' + '''> (**''' + '''$TOMORROW_PERSON''' + '''**)''')
           print(json.dumps({'content': content}))
           " > payload.json
 
