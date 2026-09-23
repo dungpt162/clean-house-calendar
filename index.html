@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lịch Đổ Rác</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>🗑️ Lịch Đổ Rác</h1>
+      <p class="subtitle">Xoay vòng theo ngày &mdash; mỗi người 1 ngày</p>
+    </header>
+
+    <section class="today-card" id="todayCard">
+      <div class="today-block">
+        <span class="today-label">Hôm nay</span>
+        <span class="today-date" id="todayDate"></span>
+        <span class="today-person" id="todayPerson"></span>
+      </div>
+      <div class="tomorrow-block">
+        <span class="today-label">Ngày mai</span>
+        <span class="today-date" id="tomorrowDate"></span>
+        <span class="today-person" id="tomorrowPerson"></span>
+      </div>
+    </section>
+
+    <section class="calendar-section">
+      <div class="calendar-nav">
+        <button id="prevMonth" aria-label="Tháng trước">&#8592;</button>
+        <h2 id="monthLabel"></h2>
+        <button id="nextMonth" aria-label="Tháng sau">&#8594;</button>
+      </div>
+      <button id="todayBtn" class="today-btn">Về hôm nay</button>
+      <div class="weekday-row">
+        <span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </section>
+
+    <section class="upcoming-section">
+      <h2>7 ngày tới</h2>
+      <ul class="upcoming-list" id="upcomingList"></ul>
+    </section>
+
+    <section class="legend-section">
+      <h2>Thành viên</h2>
+      <ul class="legend-list" id="legendList"></ul>
+    </section>
+
+    <footer class="footer">
+      <p>Thứ tự và ngày bắt đầu có thể chỉnh trong <code>app.js</code>.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

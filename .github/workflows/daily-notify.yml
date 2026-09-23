@@ -1,0 +1,38 @@
+name: Daily Trash Duty Notification
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 00:00 UTC = 07:00 Asia/Ho_Chi_Minh
+  workflow_dispatch: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          START="2026-09-23"
+          TODAY=$(TZ='Asia/Ho_Chi_Minh' date +%Y-%m-%d)
+          MEMBERS=("Tiến Dũng Dev" "Như Quỳnh" "Thành Luân" "Tiến Dũng GD" "Tuyết Nhung" "Trung Lê" "Mạnh Cường" "Nam Dev" "Hachi" "Thảo")
+          n=${#MEMBERS[@]}
+          diff_days=$(( ( $(date -d "$TODAY" +%s) - $(date -d "$START" +%s) ) / 86400 ))
+          idx=$(( ((diff_days % n) + n) % n ))
+          tomorrow_idx=$(( (idx+1) % n ))
+          TODAY_VN=$(TZ='Asia/Ho_Chi_Minh' date +"%d/%m/%Y")
+          TODAY_PERSON="${MEMBERS[$idx]}"
+          TOMORROW_PERSON="${MEMBERS[$tomorrow_idx]}"
+
+          python3 -c "
+          import json
+          content = '🗑️ **Lịch đổ rác ngày ' + '''$TODAY_VN''' + '''**\n\nHôm nay là phiên đổ rác của: **''' + '''$TODAY_PERSON''' + '''**\nNgày mai: ''' + '''$TOMORROW_PERSON'''
+          print(json.dumps({'content': content}))
+          " > payload.json
+
+          curl -sS -X POST -H "Content-Type: application/json" \
+            --data-binary @payload.json \
+            -o response.txt -w "HTTP_STATUS:%{http_code}\n" \
+            "$DISCORD_WEBHOOK_URL"
+
+          cat response.txt
