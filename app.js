@@ -1,62 +1,7 @@
-// ==== CẤU HÌNH ====
-// Danh sách thành viên theo thứ tự đổ rác (lặp lại vòng tròn).
-const MEMBERS = [
-  { name: "Tiến Dũng Dev", color: "#2563eb" },
-  { name: "Như Quỳnh",     color: "#db2777" },
-  { name: "Thành Luân",    color: "#16a34a" },
-  { name: "Tiến Dũng GD",  color: "#ea580c" },
-  { name: "Tuyết Nhung",   color: "#9333ea" },
-  { name: "Trung Lê",      color: "#0891b2" },
-  { name: "Mạnh Cường",    color: "#ca8a04" },
-  { name: "Nam Dev",       color: "#dc2626" },
-  { name: "Hachi",         color: "#4d7c0f" },
-  { name: "Thảo",          color: "#0f766e" },
-];
-
-// Ngày mà người đầu tiên (MEMBERS[0]) bắt đầu phiên đổ rác.
-// Đổi ngày này nếu muốn dịch chuyển toàn bộ lịch.
-const START_DATE = new Date(2026, 8, 23); // 23/09/2026 (tháng tính từ 0)
-
-// ==== LOGIC ====
-function stripTime(d) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function daysBetween(a, b) {
-  const MS_PER_DAY = 86400000;
-  return Math.round((stripTime(b) - stripTime(a)) / MS_PER_DAY);
-}
-
-function isWeekend(date) {
-  const dow = date.getDay();
-  return dow === 0 || dow === 6;
-}
-
-// Số ngày làm việc (T2-T6) tính từ một mốc thứ 2 cố định đến `date`.
-const MONDAY_REF = new Date(2026, 8, 21);
-function workdayIndex(date) {
-  const dn = daysBetween(MONDAY_REF, date);
-  const weeks = Math.floor(dn / 7);
-  const dow = ((dn % 7) + 7) % 7; // 0 = Thứ 2
-  return weeks * 5 + Math.min(dow, 5);
-}
-
-// Trả về null nếu là Thứ 7 / Chủ nhật (không đổ rác).
-function getMemberForDate(date) {
-  if (isWeekend(date)) return null;
-  const diff = workdayIndex(date) - workdayIndex(START_DATE);
-  const n = MEMBERS.length;
-  const idx = ((diff % n) + n) % n;
-  return MEMBERS[idx];
-}
-
-function nextWorkday(date) {
-  const d = new Date(date);
-  do {
-    d.setDate(d.getDate() + 1);
-  } while (isWeekend(d));
-  return d;
-}
+// Dữ liệu (thành viên, ngày bắt đầu, override) nằm trong schedule.json,
+// logic tính lịch nằm trong core.js. Chỉnh lịch qua trang /cms.
+let schedule = { startDate: "2026-09-23", members: [], overrides: {} };
+const memberFor = (date) => getMemberForDate(date, schedule);
 
 const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const MONTH_FMT = new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" });
@@ -70,8 +15,8 @@ function renderToday() {
   const tomorrow = nextWorkday(today);
   const isTomorrow = daysBetween(today, tomorrow) === 1;
 
-  const todayMember = getMemberForDate(today);
-  const tomorrowMember = getMemberForDate(tomorrow);
+  const todayMember = memberFor(today);
+  const tomorrowMember = memberFor(tomorrow);
 
   document.getElementById("todayDate").textContent = LONG_DATE_FMT.format(today);
   document.getElementById("todayPerson").textContent = todayMember ? todayMember.name : "Nghỉ (không đổ rác)";
@@ -90,7 +35,7 @@ function renderUpcoming() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() + i);
-    const member = getMemberForDate(d);
+    const member = memberFor(d);
     const li = document.createElement("li");
 
     const dateSpan = document.createElement("span");
@@ -119,7 +64,7 @@ function renderUpcoming() {
 function renderLegend() {
   const list = document.getElementById("legendList");
   list.innerHTML = "";
-  MEMBERS.forEach((m) => {
+  schedule.members.forEach((m) => {
     const li = document.createElement("li");
     const dot = document.createElement("span");
     dot.className = "dot";
@@ -151,7 +96,7 @@ function renderCalendar() {
 
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(viewYear, viewMonth, day);
-    const member = getMemberForDate(date);
+    const member = memberFor(date);
 
     const cell = document.createElement("div");
     cell.className = "day-cell";
@@ -187,7 +132,16 @@ function renderAll() {
   renderCalendar();
 }
 
-function init() {
+async function init() {
+  try {
+    const res = await fetch("schedule.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    schedule = await res.json();
+  } catch (e) {
+    document.querySelector(".subtitle").textContent = "Không tải được schedule.json";
+    return;
+  }
+
   const today = new Date();
   viewYear = today.getFullYear();
   viewMonth = today.getMonth();

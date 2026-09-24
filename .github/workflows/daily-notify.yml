@@ -9,49 +9,21 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Build message
+        run: python3 .github/scripts/notify.py
+
       - name: Send Discord notification
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          START="2026-09-23"
-          TODAY=$(TZ='Asia/Ho_Chi_Minh' date +%Y-%m-%d)
-          MEMBERS=("Tiến Dũng Dev" "Như Quỳnh" "Thành Luân" "Tiến Dũng GD" "Tuyết Nhung" "Trung Lê" "Mạnh Cường" "Nam Dev" "Hachi" "Thảo")
-          MEMBER_IDS=("1293753204303204493" "754344195866624101" "252118396324413454" "417632819641319425" "1230707475259592756" "525686404814995456" "559419038640504838" "1247012765713825840" "627470632430338048" "373664319155601418")
-          n=${#MEMBERS[@]}
-          # Chỉ đổ rác T2-T6; bỏ qua Thứ 7 và Chủ nhật.
-          DOW=$(TZ='Asia/Ho_Chi_Minh' date +%u)
-          if [ "$DOW" -ge 6 ]; then
-            echo "Weekend - no trash duty, skipping."
+          if [ ! -f payload.json ]; then
+            echo "No payload (weekend) - nothing to send."
             exit 0
           fi
-          # Số ngày làm việc tính từ mốc thứ 2 (2026-09-21).
-          workday_index() {
-            local dn=$(( ( $(date -d "$1" +%s) - $(date -d "2026-09-21" +%s) ) / 86400 ))
-            local weeks=$(( dn / 7 ))
-            local dow=$(( dn % 7 ))
-            [ $dow -gt 5 ] && dow=5
-            echo $(( weeks * 5 + dow ))
-          }
-          diff_days=$(( $(workday_index "$TODAY") - $(workday_index "$START") ))
-          idx=$(( ((diff_days % n) + n) % n ))
-          tomorrow_idx=$(( (idx+1) % n ))
-          TODAY_VN=$(TZ='Asia/Ho_Chi_Minh' date +"%d/%m/%Y")
-          TODAY_PERSON="${MEMBERS[$idx]}"
-          TODAY_ID="${MEMBER_IDS[$idx]}"
-          TOMORROW_PERSON="${MEMBERS[$tomorrow_idx]}"
-          TOMORROW_ID="${MEMBER_IDS[$tomorrow_idx]}"
-
-          python3 -c "
-          import json
-          content = ('🗑️ **Lịch đổ rác ngày ' + '''$TODAY_VN''' + '''**\n\n'''
-                      + 'Hôm nay là phiên đổ rác của: <@' + '''$TODAY_ID''' + '''> (**''' + '''$TODAY_PERSON''' + '''**)\n'''
-                      + 'Ngày làm việc kế tiếp: <@' + '''$TOMORROW_ID''' + '''> (**''' + '''$TOMORROW_PERSON''' + '''**)''')
-          print(json.dumps({'content': content}))
-          " > payload.json
-
           curl -sS -X POST -H "Content-Type: application/json" \
             --data-binary @payload.json \
             -o response.txt -w "HTTP_STATUS:%{http_code}\n" \
             "$DISCORD_WEBHOOK_URL"
-
           cat response.txt
