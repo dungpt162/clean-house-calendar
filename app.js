@@ -27,11 +27,35 @@ function daysBetween(a, b) {
   return Math.round((stripTime(b) - stripTime(a)) / MS_PER_DAY);
 }
 
+function isWeekend(date) {
+  const dow = date.getDay();
+  return dow === 0 || dow === 6;
+}
+
+// Số ngày làm việc (T2-T6) tính từ một mốc thứ 2 cố định đến `date`.
+const MONDAY_REF = new Date(2026, 8, 21);
+function workdayIndex(date) {
+  const dn = daysBetween(MONDAY_REF, date);
+  const weeks = Math.floor(dn / 7);
+  const dow = ((dn % 7) + 7) % 7; // 0 = Thứ 2
+  return weeks * 5 + Math.min(dow, 5);
+}
+
+// Trả về null nếu là Thứ 7 / Chủ nhật (không đổ rác).
 function getMemberForDate(date) {
-  const diff = daysBetween(START_DATE, date);
+  if (isWeekend(date)) return null;
+  const diff = workdayIndex(date) - workdayIndex(START_DATE);
   const n = MEMBERS.length;
   const idx = ((diff % n) + n) % n;
   return MEMBERS[idx];
+}
+
+function nextWorkday(date) {
+  const d = new Date(date);
+  do {
+    d.setDate(d.getDate() + 1);
+  } while (isWeekend(d));
+  return d;
 }
 
 const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
@@ -43,16 +67,17 @@ let viewYear, viewMonth; // tháng đang xem trên lịch (0-based month)
 
 function renderToday() {
   const today = stripTime(new Date());
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrow = nextWorkday(today);
+  const isTomorrow = daysBetween(today, tomorrow) === 1;
 
   const todayMember = getMemberForDate(today);
   const tomorrowMember = getMemberForDate(tomorrow);
 
   document.getElementById("todayDate").textContent = LONG_DATE_FMT.format(today);
-  document.getElementById("todayPerson").textContent = todayMember.name;
-  document.getElementById("todayPerson").style.color = todayMember.color;
+  document.getElementById("todayPerson").textContent = todayMember ? todayMember.name : "Nghỉ (không đổ rác)";
+  document.getElementById("todayPerson").style.color = todayMember ? todayMember.color : "";
 
+  document.getElementById("tomorrowLabel").textContent = isTomorrow ? "Ngày mai" : "Ngày đổ rác kế tiếp";
   document.getElementById("tomorrowDate").textContent = LONG_DATE_FMT.format(tomorrow);
   document.getElementById("tomorrowPerson").textContent = tomorrowMember.name;
   document.getElementById("tomorrowPerson").style.color = tomorrowMember.color;
@@ -74,11 +99,16 @@ function renderUpcoming() {
 
     const personSpan = document.createElement("span");
     personSpan.className = "u-person";
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    dot.style.background = member.color;
-    personSpan.appendChild(dot);
-    personSpan.appendChild(document.createTextNode(member.name));
+    if (member) {
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = member.color;
+      personSpan.appendChild(dot);
+      personSpan.appendChild(document.createTextNode(member.name));
+    } else {
+      personSpan.textContent = "Nghỉ";
+      li.style.opacity = "0.5";
+    }
 
     li.appendChild(dateSpan);
     li.appendChild(personSpan);
@@ -125,8 +155,12 @@ function renderCalendar() {
 
     const cell = document.createElement("div");
     cell.className = "day-cell";
-    cell.style.background = member.color + "22";
-    cell.style.color = member.color;
+    if (member) {
+      cell.style.background = member.color + "22";
+      cell.style.color = member.color;
+    } else {
+      cell.style.opacity = "0.45";
+    }
     if (daysBetween(today, date) === 0) {
       cell.classList.add("is-today");
     }
@@ -134,13 +168,14 @@ function renderCalendar() {
     const num = document.createElement("span");
     num.className = "day-num";
     num.textContent = String(day);
-
-    const person = document.createElement("span");
-    person.className = "day-person";
-    person.textContent = member.name;
-
     cell.appendChild(num);
-    cell.appendChild(person);
+
+    if (member) {
+      const person = document.createElement("span");
+      person.className = "day-person";
+      person.textContent = member.name;
+      cell.appendChild(person);
+    }
     grid.appendChild(cell);
   }
 }
