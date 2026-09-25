@@ -1,8 +1,6 @@
 name: Daily Trash Duty Notification
 
 on:
-  schedule:
-    - cron: "30 9 * * 1-5" # 09:30 UTC = 16:30 Asia/Ho_Chi_Minh
   workflow_dispatch: {}
 
 jobs:

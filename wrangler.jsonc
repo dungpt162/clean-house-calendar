@@ -1,0 +1,14 @@
+{
+  "name": "clean-house-calendar",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./",
+    "binding": "ASSETS"
+  },
+  "triggers": {
+    // 09:30 UTC = 16:30 Asia/Ho_Chi_Minh, Thứ 2 - Thứ 6
+    "crons": ["30 9 * * MON-FRI"]
+  }
+}

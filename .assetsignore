@@ -1,0 +1,9 @@
+.git
+.github
+.claude
+wrangler.jsonc
+.assetsignore
+worker.js
+notify-message.js
+node_modules
+.wrangler

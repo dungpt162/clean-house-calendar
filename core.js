@@ -59,3 +59,8 @@ function nextWorkday(date) {
   } while (isWeekend(d));
   return d;
 }
+
+// Cho phép Worker (Node/bundler) import file này; trình duyệt bỏ qua khối này.
+if (typeof module !== "undefined") {
+  module.exports = { getMemberForDate, getRotationMember, nextWorkday, isWeekend, toISODate };
+}
