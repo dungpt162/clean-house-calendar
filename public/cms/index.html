@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Quản lý Lịch Đổ Rác</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 1.05rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .row label { flex: 0 0 90px; color: var(--muted); font-size: .9rem; }
+  .row .val { flex: 1; min-width: 0; }
+  input, select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+  button.btn { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+  button.btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.btn.danger { background: transparent; color: #dc2626; border: 1px solid #dc2626; padding: 4px 10px; }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 6px 0 0; }
+  .status { min-height: 1.4em; font-size: .9rem; margin: 8px 0 0; }
+  .status.ok { color: #16a34a; }
+  .status.err { color: #dc2626; }
+  .ov-list { list-style: none; padding: 0; margin: 0; }
+  .ov-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .ov-list li:last-child { border-bottom: 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>⚙️ Quản lý Lịch Đổ Rác</h1>
+      <p class="subtitle"><a href="../">← Về trang lịch</a></p>
+    </header>
+
+    <section class="card" id="loginCard">
+      <h2>Đăng nhập</h2>
+      <form class="row" id="loginForm">
+        <label for="password">Mật khẩu</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button class="btn" id="loginBtn" type="submit">Đăng nhập</button>
+      </form>
+      <p class="status" id="loginStatus"></p>
+    </section>
+
+    <div id="main" class="hidden">
+      <p class="hint" style="text-align:right"><button class="btn secondary" id="logoutBtn">Đăng xuất</button></p>
+      <section class="card">
+        <h2>1. Đổ hộ (hoán đổi ngày)</h2>
+        <div class="row">
+          <label for="swapDateA">Ngày A</label>
+          <input id="swapDateA" type="date">
+          <span class="val" id="swapWhoA">—</span>
+        </div>
+        <div class="row">
+          <label for="swapDateB">Ngày B</label>
+          <input id="swapDateB" type="date">
+          <span class="val" id="swapWhoB">—</span>
+        </div>
+        <div class="row">
+          <button class="btn" id="swapBtn">Hoán đổi</button>
+        </div>
+        <p class="hint">Người đổ chính của ngày A và ngày B đổi chỗ cho nhau. Vòng xoay các ngày khác không đổi. Thứ 7, Chủ nhật không đổ rác.</p>
+        <p class="status" id="swapStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>Các lần hoán đổi</h2>
+        <ul class="ov-list" id="swapList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>2. Đổ chung (thêm người phụ)</h2>
+        <div class="row">
+          <label for="helperDate">Ngày</label>
+          <input id="helperDate" type="date">
+        </div>
+        <div class="row">
+          <label>Người chính</label>
+          <span class="val" id="helperMain">—</span>
+        </div>
+        <div class="row">
+          <label for="helperMember">Người phụ</label>
+          <select id="helperMember"></select>
+        </div>
+        <div class="row">
+          <button class="btn" id="helperBtn">Thêm người phụ</button>
+        </div>
+        <p class="hint">Người phụ được tính đã đổ ngày đó: lượt kế tiếp của họ bị bỏ qua một lần, những người phía sau được dời sớm lên một ngày.</p>
+        <p class="status" id="helperStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>Các ngày đổ chung</h2>
+        <ul class="ov-list" id="helperList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>3. Bắn thông báo Discord</h2>
+        <div class="row">
+          <button class="btn secondary" id="notifyBtn">Gửi thông báo lịch hôm nay</button>
+        </div>
+        <p class="hint">Gửi ngay tin nhắn lịch hôm nay lên Discord. Thứ 7, Chủ nhật sẽ không gửi.</p>
+        <p class="status" id="notifyStatus"></p>
+      </section>
+    </div>
+  </div>
+
+<script src="../core.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let schedule = null;
+
+function setStatus(id, msg, kind) {
+  const el = $(id);
+  el.textContent = msg;
+  el.className = "status" + (kind ? " " + kind : "");
+}
+
+class AuthError extends Error {}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    credentials: "same-origin",
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (res.status === 401 && path !== "/api/login") {
+    showLogin("Phiên đăng nhập đã hết hạn, hãy đăng nhập lại.");
+    throw new AuthError("Chưa đăng nhập");
+  }
+  if (!res.ok) throw new Error(data.error || "Lỗi " + res.status);
+  return data;
+}
+
+function normalize(sch) {
+  sch.overrides = sch.overrides || {};
+  sch.helpers = sch.helpers || {};
+  return sch;
+}
+
+async function loadSchedule() {
+  schedule = normalize(await api("/api/schedule"));
+}
+
+async function saveSchedule() {
+  schedule = normalize(await api("/api/schedule", {
+    method: "PUT",
+    body: JSON.stringify({ overrides: schedule.overrides, helpers: schedule.helpers }),
+  }));
+}
+
+// Tải lại bản mới nhất trước khi sửa để tránh ghi đè thay đổi của người khác.
+async function commitChange(mutate, statusId) {
+  await loadSchedule();
+  mutate();
+  await saveSchedule();
+  renderAll();
+  setStatus(statusId, "Đã lưu.", "ok");
+}
+
+function describeDay(iso) {
+  if (!iso) return "—";
+  const d = parseISODate(iso);
+  if (isWeekend(d)) return "Cuối tuần (không đổ rác)";
+  return getMembersForDate(d, schedule).map((m) => m.name).join(" + ");
+}
+
+function renderSwapPreview() {
+  $("swapWhoA").textContent = describeDay($("swapDateA").value);
+  $("swapWhoB").textContent = describeDay($("swapDateB").value);
+}
+
+function renderHelperPreview() {
+  $("helperMain").textContent = describeDay($("helperDate").value);
+}
+
+function emptyItem(list, text) {
+  list.innerHTML = `<li class="hint">${text}</li>`;
+}
+
+function rowWithCancel(list, text, past, onCancel) {
+  const li = document.createElement("li");
+  li.style.opacity = past ? "0.5" : "1";
+  const span = document.createElement("span");
+  span.textContent = text + (past ? " (đã qua)" : "");
+  const btn = document.createElement("button");
+  btn.className = "btn danger";
+  btn.textContent = "Huỷ";
+  btn.addEventListener("click", () => onCancel(btn));
+  li.appendChild(span);
+  li.appendChild(btn);
+  list.appendChild(li);
+}
+
+function renderSwapList() {
+  const list = $("swapList");
+  list.innerHTML = "";
+  const todayIso = toISODate(new Date());
+  const ov = schedule.overrides;
+  const dates = Object.keys(ov).sort();
+  const shown = new Set();
+  let count = 0;
+  dates.forEach((a) => {
+    if (shown.has(a)) return;
+    const baseA = getRotationMember(parseISODate(a), schedule);
+    // Tìm ngày B là cặp hoán đổi của A (A giữ người của B và ngược lại).
+    const b = dates.find((x) => x !== a && !shown.has(x) &&
+      baseA && ov[x] === baseA.name &&
+      getRotationMember(parseISODate(x), schedule).name === ov[a]);
+    shown.add(a);
+    count++;
+    if (b) {
+      shown.add(b);
+      rowWithCancel(list, `${a} (${ov[a]}) ⇄ ${b} (${ov[b]})`, b < todayIso && a < todayIso,
+        (btn) => removeOverrides([a, b], btn));
+    } else {
+      rowWithCancel(list, `${a}: ${baseA ? baseA.name : "?"} → ${ov[a]}`, a < todayIso,
+        (btn) => removeOverrides([a], btn));
+    }
+  });
+  if (!count) emptyItem(list, "Chưa có lần hoán đổi nào.");
+}
+
+function renderHelperList() {
+  const list = $("helperList");
+  list.innerHTML = "";
+  const todayIso = toISODate(new Date());
+  let count = 0;
+  Object.keys(schedule.helpers).sort().forEach((iso) => {
+    schedule.helpers[iso].forEach((name) => {
+      count++;
+      rowWithCancel(list, `${iso}: ${name} đổ phụ`, iso < todayIso,
+        (btn) => removeHelper(iso, name, btn));
+    });
+  });
+  if (!count) emptyItem(list, "Chưa có ngày đổ chung nào.");
+}
+
+function renderAll() {
+  renderSwapPreview();
+  renderHelperPreview();
+  renderSwapList();
+  renderHelperList();
+}
+
+function setOverride(iso, name) {
+  const base = getRotationMember(parseISODate(iso), schedule);
+  if (base && base.name === name) delete schedule.overrides[iso];
+  else schedule.overrides[iso] = name;
+}
+
+async function swapDays() {
+  const a = $("swapDateA").value;
+  const b = $("swapDateB").value;
+  if (!a || !b) return setStatus("swapStatus", "Hãy chọn cả hai ngày.", "err");
+  if (a === b) return setStatus("swapStatus", "Hai ngày phải khác nhau.", "err");
+  if (isWeekend(parseISODate(a)) || isWeekend(parseISODate(b))) {
+    return setStatus("swapStatus", "Thứ 7, Chủ nhật không đổ rác.", "err");
+  }
+  $("swapBtn").disabled = true;
+  setStatus("swapStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      const mainA = getMemberForDate(parseISODate(a), schedule);
+      const mainB = getMemberForDate(parseISODate(b), schedule);
+      if (mainA.name === mainB.name) throw new Error("Hai ngày đang cùng một người, không cần hoán đổi.");
+      setOverride(a, mainB.name);
+      setOverride(b, mainA.name);
+    }, "swapStatus");
+  } catch (e) {
+    setStatus("swapStatus", e.message, "err");
+  } finally {
+    $("swapBtn").disabled = false;
+  }
+}
+
+async function removeOverrides(dates, btn) {
+  btn.disabled = true;
+  try {
+    await commitChange(() => {
+      dates.forEach((d) => delete schedule.overrides[d]);
+    }, "swapStatus");
+  } catch (e) {
+    setStatus("swapStatus", e.message, "err");
+    btn.disabled = false;
+  }
+}
+
+async function addHelper() {
+  const iso = $("helperDate").value;
+  const name = $("helperMember").value;
+  if (!iso) return setStatus("helperStatus", "Hãy chọn ngày.", "err");
+  if (isWeekend(parseISODate(iso))) return setStatus("helperStatus", "Thứ 7, Chủ nhật không đổ rác.", "err");
+  $("helperBtn").disabled = true;
+  setStatus("helperStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      const main = getMemberForDate(parseISODate(iso), schedule);
+      if (main.name === name) throw new Error("Người này đang là người đổ chính của ngày đó.");
+      const list = schedule.helpers[iso] || [];
+      if (list.includes(name)) throw new Error("Người này đã được thêm làm người phụ ngày đó.");
+      schedule.helpers[iso] = [...list, name];
+    }, "helperStatus");
+  } catch (e) {
+    setStatus("helperStatus", e.message, "err");
+  } finally {
+    $("helperBtn").disabled = false;
+  }
+}
+
+async function removeHelper(iso, name, btn) {
+  btn.disabled = true;
+  try {
+    await commitChange(() => {
+      const rest = (schedule.helpers[iso] || []).filter((n) => n !== name);
+      if (rest.length) schedule.helpers[iso] = rest;
+      else delete schedule.helpers[iso];
+    }, "helperStatus");
+  } catch (e) {
+    setStatus("helperStatus", e.message, "err");
+    btn.disabled = false;
+  }
+}
+
+async function notifyNow() {
+  $("notifyBtn").disabled = true;
+  setStatus("notifyStatus", "Đang gửi...");
+  try {
+    const r = await api("/api/notify", { method: "POST", body: "{}" });
+    setStatus("notifyStatus", r.sent ? "Đã gửi thông báo lên Discord." : "Hôm nay là cuối tuần nên không gửi.", "ok");
+  } catch (e) {
+    setStatus("notifyStatus", e.message, "err");
+  } finally {
+    $("notifyBtn").disabled = false;
+  }
+}
+
+function showLogin(msg) {
+  schedule = null;
+  $("main").classList.add("hidden");
+  $("loginCard").classList.remove("hidden");
+  setStatus("loginStatus", msg || "", msg ? "err" : "");
+}
+
+async function showMain() {
+  await loadSchedule();
+  $("loginCard").classList.add("hidden");
+  $("main").classList.remove("hidden");
+  const sel = $("helperMember");
+  sel.innerHTML = "";
+  schedule.members.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.name;
+    opt.textContent = m.name;
+    sel.appendChild(opt);
+  });
+  const today = toISODate(new Date());
+  ["swapDateA", "swapDateB", "helperDate"].forEach((id) => { if (!$(id).value) $(id).value = today; });
+  renderAll();
+}
+
+async function start() {
+  try {
+    const me = await api("/api/me");
+    if (me.authed) return await showMain();
+  } catch (e) {
+    if (!(e instanceof AuthError)) setStatus("loginStatus", e.message, "err");
+    return;
+  }
+  showLogin();
+}
+
+$("loginForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("loginBtn").disabled = true;
+  setStatus("loginStatus", "Đang đăng nhập...");
+  try {
+    await api("/api/login", { method: "POST", body: JSON.stringify({ password: $("password").value }) });
+    $("password").value = "";
+    setStatus("loginStatus", "");
+    await showMain();
+  } catch (e) {
+    setStatus("loginStatus", e.message, "err");
+  } finally {
+    $("loginBtn").disabled = false;
+  }
+});
+$("logoutBtn").addEventListener("click", async () => {
+  try { await api("/api/logout", { method: "POST", body: "{}" }); } catch (e) {}
+  showLogin();
+});
+$("swapDateA").addEventListener("change", () => { if (schedule) renderSwapPreview(); });
+$("swapDateB").addEventListener("change", () => { if (schedule) renderSwapPreview(); });
+$("helperDate").addEventListener("change", () => { if (schedule) renderHelperPreview(); });
+$("swapBtn").addEventListener("click", swapDays);
+$("helperBtn").addEventListener("click", addHelper);
+$("notifyBtn").addEventListener("click", notifyNow);
+
+start();
+</script>
+</body>
+</html>

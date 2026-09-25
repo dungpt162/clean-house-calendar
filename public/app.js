@@ -1,7 +1,8 @@
-// Dữ liệu (thành viên, ngày bắt đầu, override) nằm trong schedule.json,
+// Dữ liệu lịch lấy từ /api/schedule (thành viên trong schedule.json, hoán đổi/đổ chung trong KV),
 // logic tính lịch nằm trong core.js. Chỉnh lịch qua trang /cms.
 let schedule = { startDate: "2026-09-23", members: [], overrides: {} };
-const memberFor = (date) => getMemberForDate(date, schedule);
+const membersFor = (date) => getMembersForDate(date, schedule);
+const namesOf = (members) => members.map((m) => m.name).join(" + ");
 
 const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const MONTH_FMT = new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" });
@@ -15,17 +16,17 @@ function renderToday() {
   const tomorrow = nextWorkday(today);
   const isTomorrow = daysBetween(today, tomorrow) === 1;
 
-  const todayMember = memberFor(today);
-  const tomorrowMember = memberFor(tomorrow);
+  const todayMembers = membersFor(today);
+  const tomorrowMembers = membersFor(tomorrow);
 
   document.getElementById("todayDate").textContent = LONG_DATE_FMT.format(today);
-  document.getElementById("todayPerson").textContent = todayMember ? todayMember.name : "Nghỉ (không đổ rác)";
-  document.getElementById("todayPerson").style.color = todayMember ? todayMember.color : "";
+  document.getElementById("todayPerson").textContent = todayMembers.length ? namesOf(todayMembers) : "Nghỉ (không đổ rác)";
+  document.getElementById("todayPerson").style.color = todayMembers.length ? todayMembers[0].color : "";
 
   document.getElementById("tomorrowLabel").textContent = isTomorrow ? "Ngày mai" : "Ngày đổ rác kế tiếp";
   document.getElementById("tomorrowDate").textContent = LONG_DATE_FMT.format(tomorrow);
-  document.getElementById("tomorrowPerson").textContent = tomorrowMember.name;
-  document.getElementById("tomorrowPerson").style.color = tomorrowMember.color;
+  document.getElementById("tomorrowPerson").textContent = namesOf(tomorrowMembers);
+  document.getElementById("tomorrowPerson").style.color = tomorrowMembers[0].color;
 }
 
 function renderUpcoming() {
@@ -35,7 +36,7 @@ function renderUpcoming() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() + i);
-    const member = memberFor(d);
+    const members = membersFor(d);
     const li = document.createElement("li");
 
     const dateSpan = document.createElement("span");
@@ -44,12 +45,15 @@ function renderUpcoming() {
 
     const personSpan = document.createElement("span");
     personSpan.className = "u-person";
-    if (member) {
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      dot.style.background = member.color;
-      personSpan.appendChild(dot);
-      personSpan.appendChild(document.createTextNode(member.name));
+    if (members.length) {
+      members.forEach((member, idx) => {
+        if (idx > 0) personSpan.appendChild(document.createTextNode(" + "));
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = member.color;
+        personSpan.appendChild(dot);
+        personSpan.appendChild(document.createTextNode(member.name));
+      });
     } else {
       personSpan.textContent = "Nghỉ";
       li.style.opacity = "0.5";
@@ -96,7 +100,8 @@ function renderCalendar() {
 
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(viewYear, viewMonth, day);
-    const member = memberFor(date);
+    const members = membersFor(date);
+    const member = members[0];
 
     const cell = document.createElement("div");
     cell.className = "day-cell";
@@ -118,7 +123,7 @@ function renderCalendar() {
     if (member) {
       const person = document.createElement("span");
       person.className = "day-person";
-      person.textContent = member.name;
+      person.textContent = namesOf(members);
       cell.appendChild(person);
     }
     grid.appendChild(cell);
@@ -132,13 +137,22 @@ function renderAll() {
   renderCalendar();
 }
 
+// Lấy lịch từ API (gồm dữ liệu hoán đổi/đổ chung); dự phòng schedule.json khi chạy cục bộ.
+async function loadSchedule() {
+  for (const url of ["/api/schedule", "schedule.json"]) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) return await res.json();
+    } catch (e) { /* thử nguồn tiếp theo */ }
+  }
+  throw new Error("Không tải được lịch");
+}
+
 async function init() {
   try {
-    const res = await fetch("schedule.json", { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    schedule = await res.json();
+    schedule = await loadSchedule();
   } catch (e) {
-    document.querySelector(".subtitle").textContent = "Không tải được schedule.json";
+    document.querySelector(".subtitle").textContent = "Không tải được lịch";
     return;
   }
 

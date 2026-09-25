@@ -1,20 +1,22 @@
-// Dựng nội dung thông báo Discord. Dùng bởi worker.js (cron trên Cloudflare).
-import core from "./core.js";
+// Dựng nội dung thông báo Discord. Dùng bởi worker.js (cron trên Cloudflare)
+// và .github/scripts/notify.mjs (chạy tay từ GitHub Actions).
+import core from "./public/core.js";
 
-const { getMemberForDate, getRotationMember, nextWorkday, isWeekend, toISODate } = core;
+const { getMembersForDate, getRotationMember, nextWorkday, isWeekend } = core;
 
 const VN_OFFSET_MS = 7 * 3600 * 1000; // Asia/Ho_Chi_Minh, không có DST
 
-// Ngày hiện tại ở Việt Nam, dạng Date "giờ địa phương" (Worker chạy ở UTC).
+// Ngày hiện tại ở Việt Nam, dạng Date "giờ địa phương" (Worker và runner chạy ở UTC).
 export function vietnamToday(nowMs = Date.now()) {
   const vn = new Date(nowMs + VN_OFFSET_MS);
   return new Date(vn.getUTCFullYear(), vn.getUTCMonth(), vn.getUTCDate());
 }
 
 function line(prefix, date, schedule) {
-  const m = getMemberForDate(date, schedule);
-  const overridden = m.name !== getRotationMember(date, schedule).name;
-  return `${prefix}: <@${m.discordId}> (**${m.name}**)${overridden ? " (đổ hộ)" : ""}`;
+  const members = getMembersForDate(date, schedule);
+  const swapped = members[0].name !== getRotationMember(date, schedule).name;
+  const who = members.map((m) => `<@${m.discordId}> (**${m.name}**)`).join(" + ");
+  return `${prefix}: ${who}${swapped ? " (đổi lịch)" : ""}`;
 }
 
 // Trả về null nếu hôm nay là Thứ 7 / Chủ nhật.

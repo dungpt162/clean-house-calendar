@@ -4,9 +4,11 @@
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
   "assets": {
-    "directory": "./",
+    "directory": "./public",
     "binding": "ASSETS"
   },
+  // Dữ liệu động (hoán đổi, đổ chung) và bộ đếm đăng nhập sai. Wrangler tự tạo namespace khi deploy.
+  "kv_namespaces": [{ "binding": "STATE" }],
   "triggers": {
     // 09:30 UTC = 16:30 Asia/Ho_Chi_Minh, Thứ 2 - Thứ 6
     "crons": ["30 9 * * MON-FRI"]
