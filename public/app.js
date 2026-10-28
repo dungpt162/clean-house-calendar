@@ -1,8 +1,9 @@
-// Dữ liệu lịch lấy từ /api/schedule (thành viên trong schedule.json, hoán đổi/đổ chung trong KV),
+// Dữ liệu lịch lấy từ /api/schedule (thành viên trong schedule.json, hoán đổi/đổ chung/phạt trong KV),
 // logic tính lịch nằm trong core.js. Chỉnh lịch qua trang /cms.
 let schedule = { startDate: "2026-09-23", members: [], overrides: {} };
 const membersFor = (date) => getMembersForDate(date, schedule);
 const namesOf = (members) => members.map((m) => m.name).join(" + ");
+const penaltyMark = (date) => (getPenaltyForDate(date, schedule) ? " ⚠️ phạt" : "");
 
 const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const MONTH_FMT = new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" });
@@ -20,12 +21,12 @@ function renderToday() {
   const tomorrowMembers = membersFor(tomorrow);
 
   document.getElementById("todayDate").textContent = LONG_DATE_FMT.format(today);
-  document.getElementById("todayPerson").textContent = todayMembers.length ? namesOf(todayMembers) : "Nghỉ (không đổ rác)";
+  document.getElementById("todayPerson").textContent = todayMembers.length ? namesOf(todayMembers) + penaltyMark(today) : "Nghỉ (không đổ rác)";
   document.getElementById("todayPerson").style.color = todayMembers.length ? todayMembers[0].color : "";
 
   document.getElementById("tomorrowLabel").textContent = isTomorrow ? "Ngày mai" : "Ngày đổ rác kế tiếp";
   document.getElementById("tomorrowDate").textContent = LONG_DATE_FMT.format(tomorrow);
-  document.getElementById("tomorrowPerson").textContent = namesOf(tomorrowMembers);
+  document.getElementById("tomorrowPerson").textContent = namesOf(tomorrowMembers) + penaltyMark(tomorrow);
   document.getElementById("tomorrowPerson").style.color = tomorrowMembers[0].color;
 }
 
@@ -54,6 +55,7 @@ function renderUpcoming() {
         personSpan.appendChild(dot);
         personSpan.appendChild(document.createTextNode(member.name));
       });
+      personSpan.appendChild(document.createTextNode(penaltyMark(d)));
     } else {
       personSpan.textContent = "Nghỉ";
       li.style.opacity = "0.5";
@@ -123,7 +125,7 @@ function renderCalendar() {
     if (member) {
       const person = document.createElement("span");
       person.className = "day-person";
-      person.textContent = namesOf(members);
+      person.textContent = namesOf(members) + (getPenaltyForDate(date, schedule) ? " ⚠️" : "");
       cell.appendChild(person);
     }
     grid.appendChild(cell);

@@ -4,8 +4,11 @@
 //  - Cron Trigger (wrangler.jsonc) gửi thông báo đổ rác lên Discord
 //
 // Secrets cần đặt trong Cloudflare: ADMIN_PASSWORD, DISCORD_WEBHOOK_URL.
-// schedule.json trong repo giữ thành viên + ngày bắt đầu; KV giữ overrides + helpers.
-import { buildMessage, vietnamToday } from "./notify-message.mjs";
+// schedule.json trong repo giữ thành viên + ngày bắt đầu; KV giữ overrides + helpers + penalties.
+import { buildMessage, buildPenaltyMessage, vietnamToday } from "./notify-message.mjs";
+import core from "./public/core.js";
+
+const MAX_PENALTY_DAYS = 5;
 
 const SESSION_TTL_SEC = 12 * 3600;
 const MAX_FAILED_LOGINS = 5;
@@ -29,19 +32,49 @@ async function loadBase(env) {
 async function loadState(env) {
   if (!env.STATE) throw new Error("Chưa gắn KV namespace STATE");
   const raw = await env.STATE.get("state", "json");
-  return { overrides: (raw && raw.overrides) || {}, helpers: (raw && raw.helpers) || {} };
+  return {
+    overrides: (raw && raw.overrides) || {},
+    helpers: (raw && raw.helpers) || {},
+    penalties: (raw && raw.penalties) || [],
+  };
 }
 
 async function getSchedule(env) {
   const [base, state] = await Promise.all([loadBase(env), loadState(env)]);
-  return { ...base, overrides: state.overrides, helpers: state.helpers };
+  return { ...base, overrides: state.overrides, helpers: state.helpers, penalties: state.penalties };
+}
+
+const isWorkdayIso = (s) => typeof s === "string" && ISO_DATE.test(s) && !core.isWeekend(core.parseISODate(s));
+
+function validatePenalties(penalties, names) {
+  if (!Array.isArray(penalties) || penalties.length > 1000) return "penalties không hợp lệ";
+  const usedDays = new Set();
+  const keys = new Set();
+  for (const p of penalties) {
+    if (!p || typeof p !== "object" || Object.keys(p).some((k) => !["date", "name", "days"].includes(k))) {
+      return "penalties không hợp lệ";
+    }
+    if (!isWorkdayIso(p.date) || !names.has(p.name)) return "penalties có ngày hoặc tên không hợp lệ";
+    const key = p.date + "|" + p.name;
+    if (keys.has(key)) return "Đã ghi phạt người này cho ngày đó";
+    keys.add(key);
+    if (!Array.isArray(p.days) || !p.days.length || p.days.length > MAX_PENALTY_DAYS) return "Số ngày phạt không hợp lệ";
+    for (const d of p.days) {
+      if (!isWorkdayIso(d) || d <= p.date) return "Ngày phạt phải là ngày làm việc sau ngày quên";
+      if (usedDays.has(d)) return "Ngày phạt " + d + " bị trùng";
+      usedDays.add(d);
+    }
+  }
+  return null;
 }
 
 function validateState(body, members) {
   const names = new Set(members.map((m) => m.name));
-  const { overrides, helpers } = body || {};
+  const { overrides, helpers, penalties } = body || {};
   if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) return "overrides không hợp lệ";
   if (!helpers || typeof helpers !== "object" || Array.isArray(helpers)) return "helpers không hợp lệ";
+  const penaltyErr = validatePenalties(penalties, names);
+  if (penaltyErr) return penaltyErr;
   if (Object.keys(overrides).length > 1000 || Object.keys(helpers).length > 1000) return "Quá nhiều mục";
   for (const [d, name] of Object.entries(overrides)) {
     if (!ISO_DATE.test(d) || !names.has(name)) return "overrides có ngày hoặc tên không hợp lệ";
@@ -54,13 +87,8 @@ function validateState(body, members) {
 }
 
 // ---------- Thông báo Discord ----------
-async function sendDailyNotification(env) {
+async function postDiscord(env, content) {
   if (!env.DISCORD_WEBHOOK_URL) throw new Error("Thiếu secret DISCORD_WEBHOOK_URL");
-  const content = buildMessage(await getSchedule(env), vietnamToday());
-  if (!content) {
-    console.log("Cuối tuần - không đổ rác, bỏ qua.");
-    return null;
-  }
   const post = await fetch(env.DISCORD_WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -68,7 +96,26 @@ async function sendDailyNotification(env) {
   });
   if (!post.ok) throw new Error("Discord trả về HTTP " + post.status + ": " + (await post.text()));
   console.log("Đã gửi thông báo:\n" + content);
+}
+
+async function sendDailyNotification(env) {
+  if (!env.DISCORD_WEBHOOK_URL) throw new Error("Thiếu secret DISCORD_WEBHOOK_URL");
+  const content = buildMessage(await getSchedule(env), vietnamToday());
+  if (!content) {
+    console.log("Cuối tuần - không đổ rác, bỏ qua.");
+    return null;
+  }
+  await postDiscord(env, content);
   return content;
+}
+
+// Nội dung lấy từ mục phạt đã lưu trong KV, không nhận văn bản tuỳ ý từ client.
+async function sendPenaltyNotification(env, date, name) {
+  const schedule = await getSchedule(env);
+  const penalty = schedule.penalties.find((p) => p.date === date && p.name === name);
+  if (!penalty) return false;
+  await postDiscord(env, buildPenaltyMessage(schedule, penalty));
+  return true;
 }
 
 // ---------- Đăng nhập ----------
@@ -152,7 +199,7 @@ async function handleApi(request, env, url) {
     return json({ ok: true }, 200, { "Set-Cookie": cookie("", 0) });
   }
 
-  if (pathname === "/api/schedule" || pathname === "/api/notify") {
+  if (pathname === "/api/schedule" || pathname === "/api/notify" || pathname === "/api/penalty-notify") {
     if (!(await isAuthed(request, env))) return json({ error: "Chưa đăng nhập" }, 401);
 
     if (method === "PUT" && pathname === "/api/schedule") {
@@ -161,7 +208,9 @@ async function handleApi(request, env, url) {
       const base = await loadBase(env);
       const err = validateState(body, base.members);
       if (err) return json({ error: err }, 400);
-      await env.STATE.put("state", JSON.stringify({ overrides: body.overrides, helpers: body.helpers }));
+      await env.STATE.put("state", JSON.stringify({
+        overrides: body.overrides, helpers: body.helpers, penalties: body.penalties,
+      }));
       return json(await getSchedule(env));
     }
 
@@ -169,6 +218,19 @@ async function handleApi(request, env, url) {
       try {
         const sent = await sendDailyNotification(env);
         return json({ ok: true, sent: !!sent });
+      } catch (e) {
+        return json({ error: e.message }, 502);
+      }
+    }
+
+    if (method === "POST" && pathname === "/api/penalty-notify") {
+      let body;
+      try { body = await request.json(); } catch (e) { return json({ error: "JSON không hợp lệ" }, 400); }
+      try {
+        if (!(await sendPenaltyNotification(env, body.date, body.name))) {
+          return json({ error: "Không tìm thấy mục phạt" }, 404);
+        }
+        return json({ ok: true });
       } catch (e) {
         return json({ error: e.message }, 502);
       }

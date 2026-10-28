@@ -3,6 +3,9 @@
 // Dữ liệu lịch (thành viên + startDate từ schedule.json, cộng với phần động lưu trong KV):
 //   overrides: { "YYYY-MM-DD": "Tên" }      người đổ chính của ngày đó (dùng cho hoán đổi ngày)
 //   helpers:   { "YYYY-MM-DD": ["Tên"] }    người đổ phụ (đổ chung); lượt kế tiếp của họ bị bỏ qua
+//   penalties: [{ date, name, days: ["YYYY-MM-DD", ...] }]
+//              người quên đổ rác ngày `date` phải đổ bù + đổ phạt vào các ngày `days`; vòng xoay
+//              tạm dừng ở những ngày đó (người phía sau lùi lại), lượt thường của người bị phạt giữ nguyên.
 function stripTime(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -45,8 +48,30 @@ function workdayIndex(date) {
   return weeks * 5 + Math.min(dow, 5);
 }
 
+// Ngày phạt -> mục phạt tương ứng.
+function penaltyDayMap(schedule) {
+  const map = new Map();
+  (schedule.penalties || []).forEach((p) => p.days.forEach((iso) => map.set(iso, p)));
+  return map;
+}
+
+// `count` ngày làm việc liên tiếp tính từ `start` (gồm cả start nếu là ngày làm việc),
+// bỏ qua những ngày đã là ngày phạt của mục khác.
+function nextPenaltyDays(start, count, schedule) {
+  const taken = penaltyDayMap(schedule);
+  const days = [];
+  let d = stripTime(start);
+  if (isWeekend(d)) d = nextWorkday(d);
+  while (days.length < count) {
+    if (!taken.has(toISODate(d))) days.push(toISODate(d));
+    d = nextWorkday(d);
+  }
+  return days;
+}
+
 // Vòng xoay được dựng dần theo từng ngày làm việc kể từ startDate, vì người đổ phụ
-// tạo "điểm" bỏ qua ở lượt kế tiếp của họ. Kết quả được cache theo nội dung lịch.
+// tạo "điểm" bỏ qua ở lượt kế tiếp của họ và ngày phạt chèn thêm lượt.
+// Kết quả được cache theo nội dung lịch.
 const rotationCache = { sig: null, byDate: new Map(), ptr: 0, credits: {}, next: null };
 
 function rotationSignature(schedule) {
@@ -54,6 +79,7 @@ function rotationSignature(schedule) {
     schedule.startDate,
     schedule.members.map((m) => m.name).join(","),
     JSON.stringify(schedule.helpers || {}),
+    JSON.stringify(schedule.penalties || []),
   ].join("|");
 }
 
@@ -72,16 +98,22 @@ function extendRotation(schedule, target) {
   const members = schedule.members;
   const n = members.length;
   const helpers = schedule.helpers || {};
+  const penaltyDays = penaltyDayMap(schedule);
   while (c.next <= target) {
-    // Bỏ qua người còn "điểm" (đã đổ phụ trước đó), mỗi điểm bỏ qua một lượt.
-    while ((c.credits[members[c.ptr % n].name] || 0) > 0) {
-      c.credits[members[c.ptr % n].name] -= 1;
+    const iso = toISODate(c.next);
+    const penalty = penaltyDays.get(iso);
+    // Ngày phạt: người bị phạt đổ, vòng xoay không tiến.
+    let main = penalty && members.find((m) => m.name === penalty.name);
+    if (!main) {
+      // Bỏ qua người còn "điểm" (đã đổ phụ trước đó), mỗi điểm bỏ qua một lượt.
+      while ((c.credits[members[c.ptr % n].name] || 0) > 0) {
+        c.credits[members[c.ptr % n].name] -= 1;
+        c.ptr += 1;
+      }
+      main = members[c.ptr % n];
       c.ptr += 1;
     }
-    const main = members[c.ptr % n];
-    const iso = toISODate(c.next);
     c.byDate.set(iso, main);
-    c.ptr += 1;
     (helpers[iso] || []).forEach((name) => {
       if (name !== main.name) c.credits[name] = (c.credits[name] || 0) + 1;
     });
@@ -124,6 +156,13 @@ function getHelpersForDate(date, schedule) {
     .filter((m) => m && m !== main);
 }
 
+// Mục phạt nếu người đổ chính của ngày đang đổ phạt (không bị hoán đổi đi), ngược lại null.
+function getPenaltyForDate(date, schedule) {
+  const p = penaltyDayMap(schedule).get(toISODate(date));
+  const main = getMemberForDate(date, schedule);
+  return p && main && main.name === p.name ? p : null;
+}
+
 // Tất cả người đổ trong ngày: người chính trước, rồi tới người phụ. [] nếu cuối tuần.
 function getMembersForDate(date, schedule) {
   const main = getMemberForDate(date, schedule);
@@ -135,6 +174,6 @@ function getMembersForDate(date, schedule) {
 if (typeof module !== "undefined") {
   module.exports = {
     getMemberForDate, getMembersForDate, getHelpersForDate, getRotationMember,
-    nextWorkday, isWeekend, toISODate, parseISODate,
+    getPenaltyForDate, nextPenaltyDays, nextWorkday, isWeekend, toISODate, parseISODate,
   };
 }

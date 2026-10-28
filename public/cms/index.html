@@ -97,7 +97,42 @@
       </section>
 
       <section class="card">
-        <h2>3. Bắn thông báo Discord</h2>
+        <h2>3. Phạt quên đổ rác</h2>
+        <div class="row">
+          <label for="penaltyDate">Ngày quên</label>
+          <input id="penaltyDate" type="date">
+          <span class="val" id="penaltyWho">—</span>
+        </div>
+        <div class="row">
+          <label for="penaltyMember">Người quên</label>
+          <select id="penaltyMember"></select>
+        </div>
+        <div class="row">
+          <label for="penaltyStart">Phạt từ</label>
+          <input id="penaltyStart" type="date">
+        </div>
+        <div class="row">
+          <label>Phải đổ</label>
+          <span class="val" id="penaltyDays">—</span>
+        </div>
+        <div class="row">
+          <label for="penaltyNotify">Discord</label>
+          <span class="val"><input id="penaltyNotify" type="checkbox" checked style="flex:none"> Thông báo lên nhóm</span>
+        </div>
+        <div class="row">
+          <button class="btn" id="penaltyBtn">Ghi phạt</button>
+        </div>
+        <p class="hint">Người quên phải đổ 2 ngày làm việc liền nhau (1 ngày đổ bù + 1 ngày phạt), mặc định bắt đầu từ ngày làm việc kế tiếp. Vòng xoay tạm dừng trong những ngày này nên người phía sau được lùi lại; lượt thường của người bị phạt giữ nguyên.</p>
+        <p class="status" id="penaltyStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>Các lần phạt</h2>
+        <ul class="ov-list" id="penaltyList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>4. Bắn thông báo Discord</h2>
         <div class="row">
           <button class="btn secondary" id="notifyBtn">Gửi thông báo lịch hôm nay</button>
         </div>
@@ -139,6 +174,7 @@ async function api(path, opts = {}) {
 function normalize(sch) {
   sch.overrides = sch.overrides || {};
   sch.helpers = sch.helpers || {};
+  sch.penalties = sch.penalties || [];
   return sch;
 }
 
@@ -149,7 +185,7 @@ async function loadSchedule() {
 async function saveSchedule() {
   schedule = normalize(await api("/api/schedule", {
     method: "PUT",
-    body: JSON.stringify({ overrides: schedule.overrides, helpers: schedule.helpers }),
+    body: JSON.stringify({ overrides: schedule.overrides, helpers: schedule.helpers, penalties: schedule.penalties }),
   }));
 }
 
@@ -176,6 +212,42 @@ function renderSwapPreview() {
 
 function renderHelperPreview() {
   $("helperMain").textContent = describeDay($("helperDate").value);
+}
+
+const PENALTY_DAYS = 2;
+const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+function shortDate(iso) {
+  const d = parseISODate(iso);
+  return `${WEEKDAYS[d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Mặc định phạt từ ngày làm việc sau ngày quên, nhưng không sớm hơn hôm nay.
+function defaultPenaltyStart(iso) {
+  let start = nextWorkday(parseISODate(iso));
+  const today = parseISODate(toISODate(new Date()));
+  if (start < today) start = isWeekend(today) ? nextWorkday(today) : today;
+  return toISODate(start);
+}
+
+function penaltyDaysFor(startIso) {
+  return nextPenaltyDays(parseISODate(startIso), PENALTY_DAYS, schedule);
+}
+
+// Khi đổi ngày quên: chọn sẵn người đổ chính ngày đó và ngày bắt đầu phạt.
+function onPenaltyDateChange() {
+  const iso = $("penaltyDate").value;
+  if (iso && !isWeekend(parseISODate(iso))) {
+    $("penaltyMember").value = getMemberForDate(parseISODate(iso), schedule).name;
+    $("penaltyStart").value = defaultPenaltyStart(iso);
+  }
+  renderPenaltyPreview();
+}
+
+function renderPenaltyPreview() {
+  $("penaltyWho").textContent = describeDay($("penaltyDate").value);
+  const start = $("penaltyStart").value;
+  $("penaltyDays").textContent = start ? penaltyDaysFor(start).map(shortDate).join(", ") : "—";
 }
 
 function emptyItem(list, text) {
@@ -240,11 +312,24 @@ function renderHelperList() {
   if (!count) emptyItem(list, "Chưa có ngày đổ chung nào.");
 }
 
+function renderPenaltyList() {
+  const list = $("penaltyList");
+  list.innerHTML = "";
+  const todayIso = toISODate(new Date());
+  [...schedule.penalties].sort((a, b) => b.date.localeCompare(a.date)).forEach((p) => {
+    const text = `${p.name} quên ngày ${shortDate(p.date)} → đổ ${p.days.map(shortDate).join(", ")}`;
+    rowWithCancel(list, text, p.days.every((d) => d < todayIso), (btn) => removePenalty(p.date, p.name, btn));
+  });
+  if (!schedule.penalties.length) emptyItem(list, "Chưa có lần phạt nào.");
+}
+
 function renderAll() {
   renderSwapPreview();
   renderHelperPreview();
+  renderPenaltyPreview();
   renderSwapList();
   renderHelperList();
+  renderPenaltyList();
 }
 
 function setOverride(iso, name) {
@@ -326,6 +411,50 @@ async function removeHelper(iso, name, btn) {
   }
 }
 
+async function addPenalty() {
+  const date = $("penaltyDate").value;
+  const name = $("penaltyMember").value;
+  const start = $("penaltyStart").value;
+  if (!date || !start) return setStatus("penaltyStatus", "Hãy chọn ngày quên và ngày bắt đầu phạt.", "err");
+  if (isWeekend(parseISODate(date))) return setStatus("penaltyStatus", "Thứ 7, Chủ nhật không đổ rác.", "err");
+  if (start <= date) return setStatus("penaltyStatus", "Ngày bắt đầu phạt phải sau ngày quên.", "err");
+  $("penaltyBtn").disabled = true;
+  setStatus("penaltyStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      if (schedule.penalties.some((p) => p.date === date && p.name === name)) {
+        throw new Error("Đã ghi phạt người này cho ngày đó.");
+      }
+      schedule.penalties.push({ date, name, days: penaltyDaysFor(start) });
+    }, "penaltyStatus");
+    if ($("penaltyNotify").checked) {
+      setStatus("penaltyStatus", "Đã lưu. Đang gửi thông báo...");
+      try {
+        await api("/api/penalty-notify", { method: "POST", body: JSON.stringify({ date, name }) });
+      } catch (e) {
+        throw new Error("Đã lưu phạt nhưng gửi thông báo lỗi: " + e.message);
+      }
+      setStatus("penaltyStatus", "Đã lưu và thông báo lên Discord.", "ok");
+    }
+  } catch (e) {
+    setStatus("penaltyStatus", e.message, "err");
+  } finally {
+    $("penaltyBtn").disabled = false;
+  }
+}
+
+async function removePenalty(date, name, btn) {
+  btn.disabled = true;
+  try {
+    await commitChange(() => {
+      schedule.penalties = schedule.penalties.filter((p) => !(p.date === date && p.name === name));
+    }, "penaltyStatus");
+  } catch (e) {
+    setStatus("penaltyStatus", e.message, "err");
+    btn.disabled = false;
+  }
+}
+
 async function notifyNow() {
   $("notifyBtn").disabled = true;
   setStatus("notifyStatus", "Đang gửi...");
@@ -350,16 +479,19 @@ async function showMain() {
   await loadSchedule();
   $("loginCard").classList.add("hidden");
   $("main").classList.remove("hidden");
-  const sel = $("helperMember");
-  sel.innerHTML = "";
-  schedule.members.forEach((m) => {
-    const opt = document.createElement("option");
-    opt.value = m.name;
-    opt.textContent = m.name;
-    sel.appendChild(opt);
+  ["helperMember", "penaltyMember"].forEach((id) => {
+    const sel = $(id);
+    sel.innerHTML = "";
+    schedule.members.forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m.name;
+      opt.textContent = m.name;
+      sel.appendChild(opt);
+    });
   });
   const today = toISODate(new Date());
-  ["swapDateA", "swapDateB", "helperDate"].forEach((id) => { if (!$(id).value) $(id).value = today; });
+  ["swapDateA", "swapDateB", "helperDate", "penaltyDate"].forEach((id) => { if (!$(id).value) $(id).value = today; });
+  onPenaltyDateChange();
   renderAll();
 }
 
@@ -396,6 +528,9 @@ $("logoutBtn").addEventListener("click", async () => {
 $("swapDateA").addEventListener("change", () => { if (schedule) renderSwapPreview(); });
 $("swapDateB").addEventListener("change", () => { if (schedule) renderSwapPreview(); });
 $("helperDate").addEventListener("change", () => { if (schedule) renderHelperPreview(); });
+$("penaltyDate").addEventListener("change", () => { if (schedule) onPenaltyDateChange(); });
+$("penaltyStart").addEventListener("change", () => { if (schedule) renderPenaltyPreview(); });
+$("penaltyBtn").addEventListener("click", addPenalty);
 $("swapBtn").addEventListener("click", swapDays);
 $("helperBtn").addEventListener("click", addHelper);
 $("notifyBtn").addEventListener("click", notifyNow);
