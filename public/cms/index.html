@@ -132,12 +132,94 @@
       </section>
 
       <section class="card">
-        <h2>4. Bắn thông báo Discord</h2>
+        <h2>4. Đánh dấu ngày nghỉ</h2>
+        <div class="row">
+          <label for="holidayDate">Ngày nghỉ</label>
+          <input id="holidayDate" type="date">
+          <span class="val" id="holidayWho">—</span>
+        </div>
+        <div class="row">
+          <button class="btn" id="holidayBtn">Đánh dấu nghỉ</button>
+        </div>
+        <p class="hint">Ngày nghỉ không đổ rác và vòng xoay không tiến (người của ngày đó được dời sang ngày làm việc kế tiếp). Hoán đổi / đổ chung đã đặt cho ngày đó sẽ bị xoá. Không đánh dấu được ngày đang có lịch phạt.</p>
+        <p class="status" id="holidayStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>Các ngày nghỉ</h2>
+        <ul class="ov-list" id="holidayList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>5. Thêm nhân viên</h2>
+        <div class="row">
+          <label for="memberName">Tên</label>
+          <input id="memberName" type="text" maxlength="40">
+        </div>
+        <div class="row">
+          <label for="memberDiscord">Discord ID</label>
+          <input id="memberDiscord" type="text" inputmode="numeric" placeholder="VD: 123456789012345678">
+        </div>
+        <div class="row">
+          <label for="memberColor">Màu</label>
+          <input id="memberColor" type="color" value="#6366f1" style="flex:none;width:60px;padding:2px">
+        </div>
+        <div class="row">
+          <label for="memberFrom">Vào từ</label>
+          <input id="memberFrom" type="date">
+        </div>
+        <div class="row">
+          <button class="btn" id="memberBtn">Thêm nhân viên</button>
+        </div>
+        <p class="hint">Nhân viên mới được xếp cuối vòng xoay, bắt đầu tính từ ngày "Vào từ" (lịch trước ngày đó không đổi). Discord ID lấy bằng cách bật Developer Mode rồi chuột phải vào người dùng → Copy User ID.</p>
+        <p class="status" id="memberStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>Danh sách nhân viên</h2>
+        <ul class="ov-list" id="memberList"></ul>
+        <p class="hint">Sửa màu / Discord ID rồi bấm Lưu. "Nghỉ việc sau ngày" là ngày cuối cùng còn trong vòng xoay; để trống nếu còn làm. Tên không đổi được (vì gắn với lịch đã có).</p>
+        <p class="status" id="memberEditStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>6. Vắng mặt (nghỉ phép, công tác)</h2>
+        <div class="row">
+          <label for="absMember">Nhân viên</label>
+          <select id="absMember"></select>
+        </div>
+        <div class="row">
+          <label for="absFrom">Từ ngày</label>
+          <input id="absFrom" type="date">
+        </div>
+        <div class="row">
+          <label for="absTo">Đến ngày</label>
+          <input id="absTo" type="date">
+        </div>
+        <div class="row">
+          <button class="btn" id="absBtn">Thêm vắng mặt</button>
+        </div>
+        <p class="hint">Trong khoảng này vòng xoay bỏ qua người đó (lượt bị bỏ qua, không đổ bù). Hoán đổi / đổ chung đặt tay vẫn giữ nguyên.</p>
+        <p class="status" id="absStatus"></p>
+      </section>
+
+      <section class="card">
+        <h2>Các lần vắng mặt</h2>
+        <ul class="ov-list" id="absList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>7. Bắn thông báo Discord</h2>
         <div class="row">
           <button class="btn secondary" id="notifyBtn">Gửi thông báo lịch hôm nay</button>
         </div>
         <p class="hint">Gửi ngay tin nhắn lịch hôm nay lên Discord. Thứ 7, Chủ nhật sẽ không gửi.</p>
         <p class="status" id="notifyStatus"></p>
+      </section>
+      <section class="card">
+        <h2>Lịch sử thay đổi</h2>
+        <ul class="ov-list" id="auditList"></ul>
+        <p class="hint">200 thao tác gần nhất.</p>
       </section>
     </div>
   </div>
@@ -175,6 +257,10 @@ function normalize(sch) {
   sch.overrides = sch.overrides || {};
   sch.helpers = sch.helpers || {};
   sch.penalties = sch.penalties || [];
+  sch.holidays = sch.holidays || [];
+  sch.extraMembers = sch.extraMembers || [];
+  sch.memberMeta = sch.memberMeta || {};
+  sch.absences = sch.absences || [];
   return sch;
 }
 
@@ -185,7 +271,11 @@ async function loadSchedule() {
 async function saveSchedule() {
   schedule = normalize(await api("/api/schedule", {
     method: "PUT",
-    body: JSON.stringify({ overrides: schedule.overrides, helpers: schedule.helpers, penalties: schedule.penalties }),
+    body: JSON.stringify({
+      overrides: schedule.overrides, helpers: schedule.helpers, penalties: schedule.penalties,
+      holidays: schedule.holidays, members: schedule.extraMembers,
+      memberMeta: schedule.memberMeta, absences: schedule.absences,
+    }),
   }));
 }
 
@@ -196,12 +286,14 @@ async function commitChange(mutate, statusId) {
   await saveSchedule();
   renderAll();
   setStatus(statusId, "Đã lưu.", "ok");
+  loadAudit();
 }
 
 function describeDay(iso) {
   if (!iso) return "—";
   const d = parseISODate(iso);
   if (isWeekend(d)) return "Cuối tuần (không đổ rác)";
+  if (isOffDay(d, schedule)) return "Ngày nghỉ (không đổ rác)";
   return getMembersForDate(d, schedule).map((m) => m.name).join(" + ");
 }
 
@@ -224,9 +316,9 @@ function shortDate(iso) {
 
 // Mặc định phạt từ ngày làm việc sau ngày quên, nhưng không sớm hơn hôm nay.
 function defaultPenaltyStart(iso) {
-  let start = nextWorkday(parseISODate(iso));
+  let start = nextWorkday(parseISODate(iso), schedule);
   const today = parseISODate(toISODate(new Date()));
-  if (start < today) start = isWeekend(today) ? nextWorkday(today) : today;
+  if (start < today) start = isOffDay(today, schedule) ? nextWorkday(today, schedule) : today;
   return toISODate(start);
 }
 
@@ -237,7 +329,7 @@ function penaltyDaysFor(startIso) {
 // Khi đổi ngày quên: chọn sẵn người đổ chính ngày đó và ngày bắt đầu phạt.
 function onPenaltyDateChange() {
   const iso = $("penaltyDate").value;
-  if (iso && !isWeekend(parseISODate(iso))) {
+  if (iso && !isOffDay(parseISODate(iso), schedule)) {
     $("penaltyMember").value = getMemberForDate(parseISODate(iso), schedule).name;
     $("penaltyStart").value = defaultPenaltyStart(iso);
   }
@@ -323,7 +415,78 @@ function renderPenaltyList() {
   if (!schedule.penalties.length) emptyItem(list, "Chưa có lần phạt nào.");
 }
 
+function renderHolidayPreview() {
+  $("holidayWho").textContent = describeDay($("holidayDate").value);
+}
+
+function renderHolidayList() {
+  const list = $("holidayList");
+  list.innerHTML = "";
+  const todayIso = toISODate(new Date());
+  [...schedule.holidays].sort().forEach((iso) => {
+    rowWithCancel(list, shortDate(iso) + "/" + iso.slice(0, 4), iso < todayIso, (btn) => removeHoliday(iso, btn));
+  });
+  if (!schedule.holidays.length) emptyItem(list, "Chưa có ngày nghỉ nào.");
+}
+
+function renderMemberList() {
+  const list = $("memberList");
+  list.innerHTML = "";
+  const todayIso = toISODate(new Date());
+  schedule.members.forEach((m) => {
+    const li = document.createElement("li");
+    li.style.flexWrap = "wrap";
+    const mk = (tag, attrs) => Object.assign(document.createElement(tag), attrs);
+    const nameSpan = mk("span", { textContent: m.name + (m.from ? ` (vào ${m.from})` : "") });
+    nameSpan.style.flex = "1 1 140px";
+    if (m.to && m.to < todayIso) nameSpan.style.opacity = "0.5";
+    const color = mk("input", { type: "color", value: m.color });
+    color.style.cssText = "flex:none;width:44px;padding:2px";
+    const discord = mk("input", { type: "text", value: m.discordId, placeholder: "Discord ID" });
+    discord.style.flex = "1 1 150px";
+    const to = mk("input", { type: "date", value: m.to || "", title: "Nghỉ việc sau ngày" });
+    to.style.flex = "0 1 140px";
+    const save = mk("button", { className: "btn", textContent: "Lưu" });
+    save.addEventListener("click", () => saveMember(m.name, color.value, discord.value.trim(), to.value, save));
+    [nameSpan, color, discord, to, save].forEach((el) => li.appendChild(el));
+    list.appendChild(li);
+  });
+}
+
+function renderAbsenceList() {
+  const list = $("absList");
+  list.innerHTML = "";
+  const todayIso = toISODate(new Date());
+  [...schedule.absences].sort((a, b) => b.from.localeCompare(a.from)).forEach((a) => {
+    rowWithCancel(list, `${a.name}: ${a.from} → ${a.to}`, a.to < todayIso, (btn) => removeAbsence(a, btn));
+  });
+  if (!schedule.absences.length) emptyItem(list, "Chưa có lần vắng mặt nào.");
+}
+
+async function loadAudit() {
+  const list = $("auditList");
+  try {
+    const { log } = await api("/api/audit");
+    list.innerHTML = "";
+    log.forEach((e) => {
+      const li = document.createElement("li");
+      const when = new Date(e.t).toLocaleString("vi-VN", { hour12: false });
+      li.innerHTML = '<span></span><span class="hint" style="white-space:nowrap"></span>';
+      li.children[0].textContent = e.text;
+      li.children[1].textContent = when;
+      list.appendChild(li);
+    });
+    if (!log.length) emptyItem(list, "Chưa có thao tác nào.");
+  } catch (e) {
+    if (!(e instanceof AuthError)) emptyItem(list, "Không tải được lịch sử.");
+  }
+}
+
 function renderAll() {
+  renderHolidayPreview();
+  renderHolidayList();
+  renderMemberList();
+  renderAbsenceList();
   renderSwapPreview();
   renderHelperPreview();
   renderPenaltyPreview();
@@ -343,8 +506,8 @@ async function swapDays() {
   const b = $("swapDateB").value;
   if (!a || !b) return setStatus("swapStatus", "Hãy chọn cả hai ngày.", "err");
   if (a === b) return setStatus("swapStatus", "Hai ngày phải khác nhau.", "err");
-  if (isWeekend(parseISODate(a)) || isWeekend(parseISODate(b))) {
-    return setStatus("swapStatus", "Thứ 7, Chủ nhật không đổ rác.", "err");
+  if (isOffDay(parseISODate(a), schedule) || isOffDay(parseISODate(b), schedule)) {
+    return setStatus("swapStatus", "Thứ 7, Chủ nhật, ngày nghỉ không đổ rác.", "err");
   }
   $("swapBtn").disabled = true;
   setStatus("swapStatus", "Đang lưu...");
@@ -379,7 +542,7 @@ async function addHelper() {
   const iso = $("helperDate").value;
   const name = $("helperMember").value;
   if (!iso) return setStatus("helperStatus", "Hãy chọn ngày.", "err");
-  if (isWeekend(parseISODate(iso))) return setStatus("helperStatus", "Thứ 7, Chủ nhật không đổ rác.", "err");
+  if (isOffDay(parseISODate(iso), schedule)) return setStatus("helperStatus", "Thứ 7, Chủ nhật, ngày nghỉ không đổ rác.", "err");
   $("helperBtn").disabled = true;
   setStatus("helperStatus", "Đang lưu...");
   try {
@@ -416,7 +579,7 @@ async function addPenalty() {
   const name = $("penaltyMember").value;
   const start = $("penaltyStart").value;
   if (!date || !start) return setStatus("penaltyStatus", "Hãy chọn ngày quên và ngày bắt đầu phạt.", "err");
-  if (isWeekend(parseISODate(date))) return setStatus("penaltyStatus", "Thứ 7, Chủ nhật không đổ rác.", "err");
+  if (isOffDay(parseISODate(date), schedule)) return setStatus("penaltyStatus", "Thứ 7, Chủ nhật, ngày nghỉ không đổ rác.", "err");
   if (start <= date) return setStatus("penaltyStatus", "Ngày bắt đầu phạt phải sau ngày quên.", "err");
   $("penaltyBtn").disabled = true;
   setStatus("penaltyStatus", "Đang lưu...");
@@ -455,6 +618,123 @@ async function removePenalty(date, name, btn) {
   }
 }
 
+async function addHoliday() {
+  const iso = $("holidayDate").value;
+  if (!iso) return setStatus("holidayStatus", "Hãy chọn ngày.", "err");
+  if (isWeekend(parseISODate(iso))) return setStatus("holidayStatus", "Thứ 7, Chủ nhật đã mặc định là ngày nghỉ.", "err");
+  $("holidayBtn").disabled = true;
+  setStatus("holidayStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      if (schedule.holidays.includes(iso)) throw new Error("Ngày này đã được đánh dấu nghỉ.");
+      if (schedule.penalties.some((p) => p.days.includes(iso))) {
+        throw new Error("Ngày này đang có lịch đổ phạt, hãy huỷ phạt trước.");
+      }
+      schedule.holidays.push(iso);
+      schedule.holidays.sort();
+      delete schedule.overrides[iso];
+      delete schedule.helpers[iso];
+    }, "holidayStatus");
+  } catch (e) {
+    setStatus("holidayStatus", e.message, "err");
+  } finally {
+    $("holidayBtn").disabled = false;
+  }
+}
+
+async function removeHoliday(iso, btn) {
+  btn.disabled = true;
+  try {
+    await commitChange(() => {
+      schedule.holidays = schedule.holidays.filter((d) => d !== iso);
+    }, "holidayStatus");
+  } catch (e) {
+    setStatus("holidayStatus", e.message, "err");
+    btn.disabled = false;
+  }
+}
+
+async function saveMember(name, color, discordId, to, btn) {
+  if (!/^\d{5,25}$/.test(discordId)) return setStatus("memberEditStatus", "Discord ID phải là dãy số.", "err");
+  btn.disabled = true;
+  setStatus("memberEditStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      const cur = schedule.members.find((m) => m.name === name);
+      const meta = { ...(schedule.memberMeta[name] || {}) };
+      if (color !== cur.color) meta.color = color;
+      if (discordId !== cur.discordId) meta.discordId = discordId;
+      if (to) meta.to = to;
+      else delete meta.to;
+      if (Object.keys(meta).length) schedule.memberMeta[name] = meta;
+      else delete schedule.memberMeta[name];
+    }, "memberEditStatus");
+  } catch (e) {
+    setStatus("memberEditStatus", e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function addAbsence() {
+  const name = $("absMember").value;
+  const from = $("absFrom").value;
+  const to = $("absTo").value;
+  if (!from || !to) return setStatus("absStatus", "Hãy chọn khoảng ngày.", "err");
+  if (from > to) return setStatus("absStatus", "Ngày bắt đầu phải trước ngày kết thúc.", "err");
+  $("absBtn").disabled = true;
+  setStatus("absStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      if (schedule.absences.some((a) => a.name === name && a.from === from && a.to === to)) {
+        throw new Error("Khoảng vắng mặt này đã có.");
+      }
+      schedule.absences.push({ name, from, to });
+    }, "absStatus");
+  } catch (e) {
+    setStatus("absStatus", e.message, "err");
+  } finally {
+    $("absBtn").disabled = false;
+  }
+}
+
+async function removeAbsence(a, btn) {
+  btn.disabled = true;
+  try {
+    await commitChange(() => {
+      schedule.absences = schedule.absences.filter((x) => !(x.name === a.name && x.from === a.from && x.to === a.to));
+    }, "absStatus");
+  } catch (e) {
+    setStatus("absStatus", e.message, "err");
+    btn.disabled = false;
+  }
+}
+
+async function addMember() {
+  const name = $("memberName").value.trim();
+  const discordId = $("memberDiscord").value.trim();
+  const color = $("memberColor").value;
+  const from = $("memberFrom").value;
+  if (!name) return setStatus("memberStatus", "Hãy nhập tên.", "err");
+  if (!/^\d{5,25}$/.test(discordId)) return setStatus("memberStatus", "Discord ID phải là dãy số.", "err");
+  if (!from) return setStatus("memberStatus", "Hãy chọn ngày bắt đầu.", "err");
+  $("memberBtn").disabled = true;
+  setStatus("memberStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      if (schedule.members.some((m) => m.name === name)) throw new Error("Tên này đã tồn tại.");
+      schedule.extraMembers.push({ name, color, discordId, from });
+    }, "memberStatus");
+    $("memberName").value = "";
+    $("memberDiscord").value = "";
+    fillMemberSelects();
+  } catch (e) {
+    setStatus("memberStatus", e.message, "err");
+  } finally {
+    $("memberBtn").disabled = false;
+  }
+}
+
 async function notifyNow() {
   $("notifyBtn").disabled = true;
   setStatus("notifyStatus", "Đang gửi...");
@@ -475,12 +755,10 @@ function showLogin(msg) {
   setStatus("loginStatus", msg || "", msg ? "err" : "");
 }
 
-async function showMain() {
-  await loadSchedule();
-  $("loginCard").classList.add("hidden");
-  $("main").classList.remove("hidden");
-  ["helperMember", "penaltyMember"].forEach((id) => {
+function fillMemberSelects() {
+  ["helperMember", "penaltyMember", "absMember"].forEach((id) => {
     const sel = $(id);
+    const prev = sel.value;
     sel.innerHTML = "";
     schedule.members.forEach((m) => {
       const opt = document.createElement("option");
@@ -488,11 +766,20 @@ async function showMain() {
       opt.textContent = m.name;
       sel.appendChild(opt);
     });
+    if (prev) sel.value = prev;
   });
+}
+
+async function showMain() {
+  await loadSchedule();
+  $("loginCard").classList.add("hidden");
+  $("main").classList.remove("hidden");
+  fillMemberSelects();
   const today = toISODate(new Date());
-  ["swapDateA", "swapDateB", "helperDate", "penaltyDate"].forEach((id) => { if (!$(id).value) $(id).value = today; });
+  ["swapDateA", "swapDateB", "helperDate", "penaltyDate", "holidayDate", "memberFrom", "absFrom", "absTo"].forEach((id) => { if (!$(id).value) $(id).value = today; });
   onPenaltyDateChange();
   renderAll();
+  loadAudit();
 }
 
 async function start() {
@@ -530,6 +817,10 @@ $("swapDateB").addEventListener("change", () => { if (schedule) renderSwapPrevie
 $("helperDate").addEventListener("change", () => { if (schedule) renderHelperPreview(); });
 $("penaltyDate").addEventListener("change", () => { if (schedule) onPenaltyDateChange(); });
 $("penaltyStart").addEventListener("change", () => { if (schedule) renderPenaltyPreview(); });
+$("holidayDate").addEventListener("change", () => { if (schedule) renderHolidayPreview(); });
+$("holidayBtn").addEventListener("click", addHoliday);
+$("memberBtn").addEventListener("click", addMember);
+$("absBtn").addEventListener("click", addAbsence);
 $("penaltyBtn").addEventListener("click", addPenalty);
 $("swapBtn").addEventListener("click", swapDays);
 $("helperBtn").addEventListener("click", addHelper);

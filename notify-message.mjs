@@ -2,7 +2,7 @@
 // và .github/scripts/notify.mjs (chạy tay từ GitHub Actions).
 import core from "./public/core.js";
 
-const { getMembersForDate, getRotationMember, getPenaltyForDate, nextWorkday, isWeekend, parseISODate } = core;
+const { getMembersForDate, getRotationMember, getPenaltyForDate, nextWorkday, isOffDay, parseISODate } = core;
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 const VN_OFFSET_MS = 7 * 3600 * 1000; // Asia/Ho_Chi_Minh, không có DST
@@ -39,14 +39,14 @@ export function buildPenaltyMessage(schedule, penalty) {
   );
 }
 
-// Trả về null nếu hôm nay là Thứ 7 / Chủ nhật.
+// Trả về null nếu hôm nay là Thứ 7 / Chủ nhật / ngày nghỉ.
 export function buildMessage(schedule, today) {
-  if (isWeekend(today)) return null;
+  if (isOffDay(today, schedule)) return null;
   const dd = String(today.getDate()).padStart(2, "0");
   const mm = String(today.getMonth() + 1).padStart(2, "0");
   return (
     `🗑️ **Lịch đổ rác ngày ${dd}/${mm}/${today.getFullYear()}**\n\n` +
     line("Hôm nay là phiên đổ rác của", today, schedule) + "\n" +
-    line("Ngày làm việc kế tiếp", nextWorkday(today), schedule)
+    line("Ngày làm việc kế tiếp", nextWorkday(today, schedule), schedule)
   );
 }

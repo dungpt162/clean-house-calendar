@@ -14,7 +14,7 @@ let viewYear, viewMonth; // tháng đang xem trên lịch (0-based month)
 
 function renderToday() {
   const today = stripTime(new Date());
-  const tomorrow = nextWorkday(today);
+  const tomorrow = nextWorkday(today, schedule);
   const isTomorrow = daysBetween(today, tomorrow) === 1;
 
   const todayMembers = membersFor(today);
