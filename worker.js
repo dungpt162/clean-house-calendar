@@ -63,7 +63,7 @@ async function getSchedule(env) {
 
 const isWorkdayIso = (s) => typeof s === "string" && ISO_DATE.test(s) && !core.isWeekend(core.parseISODate(s));
 
-function validatePenalties(penalties, names, schedule) {
+function validatePenalties(penalties, names, schedule, previousPenalties = []) {
   if (!Array.isArray(penalties) || penalties.length > 1000) return "penalties không hợp lệ";
   if (penalties.some((p) => !p || typeof p !== "object" || Array.isArray(p) ||
       Object.keys(p).some((k) => !["date", "name", "days", "coveredBy"].includes(k)) ||
@@ -94,8 +94,10 @@ function validatePenalties(penalties, names, schedule) {
       coveredDates.add(p.date);
       const assigned = core.getRotationMember(core.parseISODate(p.date), schedule);
       if (!assigned || assigned.name !== p.name) return "Người quên không đúng lịch ngày đó";
-      if (!Array.isArray(p.days) || p.days.length !== 2 ||
-          core.toISODate(core.nextWorkday(core.parseISODate(p.days[0]), schedule)) !== p.days[1]) {
+      const previous = previousPenalties.find((item) => item.date === p.date && item.name === p.name);
+      const unchangedDays = previous && JSON.stringify(previous.days) === JSON.stringify(p.days);
+      if (!unchangedDays && (p.days.length !== 2 ||
+          core.toISODate(core.nextWorkday(core.parseISODate(p.days[0]), schedule)) !== p.days[1])) {
         return "Người quên phải đổ 2 ngày làm việc liên tiếp";
       }
       const coveringMember = schedule.members.find((m) => m.name === p.coveredBy);
@@ -166,7 +168,7 @@ function validateAbsences(absences, names) {
   return null;
 }
 
-function validateState(body, base) {
+function validateState(body, base, previous) {
   const baseMembers = base.members;
   const { overrides, helpers, penalties, holidays, members: extra, memberMeta, absences } = body || {};
   const extraErr = validateExtraMembers(extra, baseMembers);
@@ -183,7 +185,7 @@ function validateState(body, base) {
     startDate: base.startDate,
     members: members.map((m) => ({ ...m, ...(memberMeta[m.name] || {}) })),
     absences, overrides, holidays, penalties,
-  });
+  }, previous.penalties);
   if (penaltyErr) return penaltyErr;
   if (Object.keys(overrides).length > 1000 || Object.keys(helpers).length > 1000) return "Quá nhiều mục";
   for (const [d, name] of Object.entries(overrides)) {
@@ -386,9 +388,9 @@ async function handleApi(request, env, url) {
       let body;
       try { body = await request.json(); } catch (e) { return json({ error: "JSON không hợp lệ" }, 400); }
       const base = await loadBase(env);
-      const err = validateState(body, base);
-      if (err) return json({ error: err }, 400);
       const before = await loadState(env);
+      const err = validateState(body, base, before);
+      if (err) return json({ error: err }, 400);
       const next = {
         overrides: body.overrides, helpers: body.helpers, penalties: body.penalties,
         holidays: [...body.holidays].sort(), extraMembers: body.members,

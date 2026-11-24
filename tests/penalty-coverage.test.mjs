@@ -107,6 +107,29 @@ test("API stores coverage and rejects conflicting or inactive covering members",
   assert.equal(res.status, 200);
   assert.equal(who("2026-11-23", await res.json()), undefined);
 
+  res = await put(state([{ ...withoutCover, coveredBy: "B" }]));
+  assert.equal(res.status, 200);
+  let updated = await res.json();
+  assert.equal(who("2026-11-23", updated), "B");
+  assert.equal(who("2026-11-26", updated), "C");
+  assert.deepEqual(updated.penalties[0].days, withoutCover.days);
+  assert.match(JSON.stringify(JSON.parse(kv.get("audit"))), /Sửa phạt: A/);
+
+  res = await put(state([withoutCover]));
+  assert.equal(res.status, 200);
+  updated = await res.json();
+  assert.equal(who("2026-11-23", updated), undefined);
+  assert.equal(who("2026-11-26", updated), "B");
+
+  const legacy = { date: "2026-11-23", name: "A", days: ["2026-11-24"] };
+  res = await put(state([legacy]));
+  assert.equal(res.status, 200);
+  res = await put(state([{ ...legacy, coveredBy: "B" }]));
+  assert.equal(res.status, 200);
+  updated = await res.json();
+  assert.equal(who("2026-11-23", updated), "B");
+  assert.deepEqual(updated.penalties[0].days, legacy.days);
+
   res = await put(state([]));
   assert.equal(res.status, 200);
   assert.equal(who("2026-11-23", await res.json()), "A");

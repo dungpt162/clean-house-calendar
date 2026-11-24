@@ -148,6 +148,7 @@
         <span class="card-tag">ĐÃ GHI NHẬN</span>
         <h2>Các lần phạt</h2>
         <ul class="ov-list" id="penaltyList"></ul>
+        <p class="status" id="penaltyEditStatus" role="status"></p>
       </section>
 
       <section class="card edit-card" id="holidaySection">
@@ -453,8 +454,64 @@ function renderPenaltyList() {
   list.innerHTML = "";
   const todayIso = toISODate(new Date());
   [...schedule.penalties].sort((a, b) => b.date.localeCompare(a.date)).forEach((p) => {
-    const text = `${p.name} quên ngày ${shortDate(p.date)}${p.coveredBy ? ` (${p.coveredBy} chuyển lượt lên đổ hộ)` : " (chưa ai đổ hộ)"} → đổ bù + phạt ${p.days.map(shortDate).join(", ")}`;
-    rowWithCancel(list, text, p.days.every((d) => d < todayIso), (btn) => removePenalty(p.date, p.name, btn));
+    const li = document.createElement("li");
+    li.className = "penalty-entry";
+    const summary = document.createElement("span");
+    summary.style.opacity = p.days.every((d) => d < todayIso) ? "0.7" : "1";
+    summary.textContent = `${p.name} quên ngày ${shortDate(p.date)}${p.coveredBy ? ` (${p.coveredBy} chuyển lượt lên đổ hộ)` : " (chưa ai đổ hộ)"} → đổ bù + phạt ${p.days.map(shortDate).join(", ")}`;
+    const actions = document.createElement("div");
+    actions.className = "record-actions";
+    const edit = document.createElement("button");
+    edit.className = "btn secondary";
+    edit.textContent = "Cập nhật";
+    edit.setAttribute("aria-expanded", "false");
+    const remove = document.createElement("button");
+    remove.className = "btn danger";
+    remove.textContent = "Huỷ";
+    remove.addEventListener("click", () => removePenalty(p.date, p.name, remove));
+    actions.append(edit, remove);
+
+    const editor = document.createElement("div");
+    editor.className = "penalty-editor hidden";
+    const label = document.createElement("label");
+    label.textContent = "Người đổ hộ ngày quên";
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `Người đổ hộ cho phiếu phạt ${p.name} ngày ${p.date}`);
+    select.add(new Option("Chưa có người đổ hộ", ""));
+    schedule.members.filter((m) => m.name !== p.name &&
+      (!m.from || m.from <= p.date) && (!m.to || m.to >= p.date) &&
+      !(schedule.absences || []).some((a) => a.name === m.name && a.from <= p.date && p.date <= a.to)
+    ).forEach((m) => select.add(new Option(m.name, m.name)));
+    select.value = p.coveredBy || "";
+    label.appendChild(select);
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = "Chỉ cập nhật người đổ hộ. Hai ngày đổ bù và phạt được giữ nguyên.";
+    const controls = document.createElement("div");
+    controls.className = "record-actions";
+    const save = document.createElement("button");
+    save.className = "btn";
+    save.textContent = "Lưu thay đổi";
+    save.addEventListener("click", () => updatePenaltyCoverage(p.date, p.name, select.value, save));
+    const close = document.createElement("button");
+    close.className = "btn secondary";
+    close.textContent = "Đóng";
+    close.addEventListener("click", () => {
+      editor.classList.add("hidden");
+      edit.setAttribute("aria-expanded", "false");
+    });
+    controls.append(save, close);
+    editor.append(label, note, controls);
+    edit.addEventListener("click", () => {
+      const opening = editor.classList.contains("hidden");
+      list.querySelectorAll(".penalty-editor").forEach((panel) => panel.classList.add("hidden"));
+      list.querySelectorAll(".penalty-entry .btn[aria-expanded]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+      editor.classList.toggle("hidden", !opening);
+      edit.setAttribute("aria-expanded", String(opening));
+      if (opening) select.focus();
+    });
+    li.append(summary, actions, editor);
+    list.appendChild(li);
   });
   if (!schedule.penalties.length) emptyItem(list, "Chưa có lần phạt nào.");
 }
@@ -670,6 +727,31 @@ async function removePenalty(date, name, btn) {
     }, "penaltyStatus");
   } catch (e) {
     setStatus("penaltyStatus", e.message, "err");
+    btn.disabled = false;
+  }
+}
+
+async function updatePenaltyCoverage(date, name, coveredBy, btn) {
+  btn.disabled = true;
+  setStatus("penaltyEditStatus", "Đang lưu...");
+  try {
+    await commitChange(() => {
+      const penalty = schedule.penalties.find((p) => p.date === date && p.name === name);
+      if (!penalty) throw new Error("Phiếu phạt không còn tồn tại. Hãy tải lại trang.");
+      if (coveredBy) {
+        const member = schedule.members.find((m) => m.name === coveredBy);
+        if (!member || member.name === name || (member.from && member.from > date) ||
+            (member.to && member.to < date) ||
+            schedule.absences.some((a) => a.name === coveredBy && a.from <= date && date <= a.to)) {
+          throw new Error("Người đổ hộ không có mặt trong lịch ngày đó.");
+        }
+        penalty.coveredBy = coveredBy;
+      } else {
+        delete penalty.coveredBy;
+      }
+    }, "penaltyEditStatus");
+  } catch (e) {
+    setStatus("penaltyEditStatus", e.message, "err");
     btn.disabled = false;
   }
 }
