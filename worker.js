@@ -63,21 +63,49 @@ async function getSchedule(env) {
 
 const isWorkdayIso = (s) => typeof s === "string" && ISO_DATE.test(s) && !core.isWeekend(core.parseISODate(s));
 
-function validatePenalties(penalties, names) {
+function validatePenalties(penalties, names, schedule) {
   if (!Array.isArray(penalties) || penalties.length > 1000) return "penalties không hợp lệ";
+  if (penalties.some((p) => !p || typeof p !== "object" || Array.isArray(p) ||
+      Object.keys(p).some((k) => !["date", "name", "days", "coveredBy"].includes(k)) ||
+      !isWorkdayIso(p.date) || !names.has(p.name) || !Array.isArray(p.days) ||
+      !p.days.length || p.days.length > MAX_PENALTY_DAYS || !p.days.every(isWorkdayIso))) {
+    return "penalties không hợp lệ";
+  }
   const usedDays = new Set();
   const keys = new Set();
+  const missedDates = new Set();
+  const coveredDates = new Set();
   for (const p of penalties) {
-    if (!p || typeof p !== "object" || Object.keys(p).some((k) => !["date", "name", "days"].includes(k))) {
-      return "penalties không hợp lệ";
-    }
-    if (!isWorkdayIso(p.date) || !names.has(p.name)) return "penalties có ngày hoặc tên không hợp lệ";
     const key = p.date + "|" + p.name;
     if (keys.has(key)) return "Đã ghi phạt người này cho ngày đó";
     keys.add(key);
-    if (!Array.isArray(p.days) || !p.days.length || p.days.length > MAX_PENALTY_DAYS) return "Số ngày phạt không hợp lệ";
+    if (missedDates.has(p.date)) return "Ngày này đã được ghi quên đổ rác";
+    missedDates.add(p.date);
+    if (p.days.some((d) => schedule.holidays.includes(d) || d <= p.date)) {
+      return "Ngày phạt phải là ngày làm việc sau ngày quên";
+    }
+    if (p.coveredBy !== undefined) {
+      if (!names.has(p.coveredBy) || p.coveredBy === p.name) return "Người đổ hộ không hợp lệ";
+      if (coveredDates.has(p.date) || schedule.overrides[p.date] || schedule.holidays.includes(p.date) ||
+          penalties.some((other) => other !== p && (other.date === p.date ||
+            (Array.isArray(other.days) && other.days.includes(p.date))))) {
+        return "Ngày đổ hộ đã có thay đổi lịch khác";
+      }
+      coveredDates.add(p.date);
+      const assigned = core.getRotationMember(core.parseISODate(p.date), schedule);
+      if (!assigned || assigned.name !== p.name) return "Người quên không đúng lịch ngày đó";
+      if (!Array.isArray(p.days) || p.days.length !== 2 ||
+          core.toISODate(core.nextWorkday(core.parseISODate(p.days[0]), schedule)) !== p.days[1]) {
+        return "Người quên phải đổ 2 ngày làm việc liên tiếp";
+      }
+      const coveringMember = schedule.members.find((m) => m.name === p.coveredBy);
+      if ((coveringMember.from && coveringMember.from > p.date) ||
+          (coveringMember.to && coveringMember.to < p.date) ||
+          schedule.absences.some((a) => a.name === p.coveredBy && a.from <= p.date && p.date <= a.to)) {
+        return "Người đổ hộ không có mặt trong lịch ngày đó";
+      }
+    }
     for (const d of p.days) {
-      if (!isWorkdayIso(d) || d <= p.date) return "Ngày phạt phải là ngày làm việc sau ngày quên";
       if (usedDays.has(d)) return "Ngày phạt " + d + " bị trùng";
       usedDays.add(d);
     }
@@ -138,7 +166,8 @@ function validateAbsences(absences, names) {
   return null;
 }
 
-function validateState(body, baseMembers) {
+function validateState(body, base) {
+  const baseMembers = base.members;
   const { overrides, helpers, penalties, holidays, members: extra, memberMeta, absences } = body || {};
   const extraErr = validateExtraMembers(extra, baseMembers);
   if (extraErr) return extraErr;
@@ -150,7 +179,11 @@ function validateState(body, baseMembers) {
   if (metaErr) return metaErr;
   if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) return "overrides không hợp lệ";
   if (!helpers || typeof helpers !== "object" || Array.isArray(helpers)) return "helpers không hợp lệ";
-  const penaltyErr = validatePenalties(penalties, names);
+  const penaltyErr = validatePenalties(penalties, names, {
+    startDate: base.startDate,
+    members: members.map((m) => ({ ...m, ...(memberMeta[m.name] || {}) })),
+    absences, overrides, holidays, penalties,
+  });
   if (penaltyErr) return penaltyErr;
   if (Object.keys(overrides).length > 1000 || Object.keys(helpers).length > 1000) return "Quá nhiều mục";
   for (const [d, name] of Object.entries(overrides)) {
@@ -200,8 +233,12 @@ function diffState(a, b) {
   const pk = (p) => p.date + "|" + p.name;
   const oldP = new Set(a.penalties.map(pk));
   const newP = new Set(b.penalties.map(pk));
-  b.penalties.filter((p) => !oldP.has(pk(p))).forEach((p) => out.push(`Ghi phạt: ${p.name} quên ngày ${dayLabel(p.date)}`));
+  b.penalties.filter((p) => !oldP.has(pk(p))).forEach((p) => out.push(`Ghi phạt: ${p.name} quên ngày ${dayLabel(p.date)}${p.coveredBy ? `, ${p.coveredBy} đổ hộ` : ""}`));
   a.penalties.filter((p) => !newP.has(pk(p))).forEach((p) => out.push(`Huỷ phạt: ${p.name} ngày ${dayLabel(p.date)}`));
+  b.penalties.filter((p) => oldP.has(pk(p))).forEach((p) => {
+    const before = a.penalties.find((x) => pk(x) === pk(p));
+    if (JSON.stringify(before) !== JSON.stringify(p)) out.push(`Sửa phạt: ${p.name} ngày ${dayLabel(p.date)}${p.coveredBy ? `, ${p.coveredBy} đổ hộ` : ""}`);
+  });
   b.holidays.filter((d) => !a.holidays.includes(d)).forEach((d) => out.push(`Đánh dấu nghỉ ngày ${dayLabel(d)}`));
   a.holidays.filter((d) => !b.holidays.includes(d)).forEach((d) => out.push(`Bỏ ngày nghỉ ${dayLabel(d)}`));
   const en = new Set(a.extraMembers.map((m) => m.name));
@@ -349,7 +386,7 @@ async function handleApi(request, env, url) {
       let body;
       try { body = await request.json(); } catch (e) { return json({ error: "JSON không hợp lệ" }, 400); }
       const base = await loadBase(env);
-      const err = validateState(body, base.members);
+      const err = validateState(body, base);
       if (err) return json({ error: err }, 400);
       const before = await loadState(env);
       const next = {

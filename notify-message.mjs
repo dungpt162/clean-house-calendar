@@ -2,7 +2,7 @@
 // và .github/scripts/notify.mjs (chạy tay từ GitHub Actions).
 import core from "./public/core.js";
 
-const { getMembersForDate, getRotationMember, getPenaltyForDate, nextWorkday, isOffDay, parseISODate } = core;
+const { getMembersForDate, getRotationMember, getPenaltyForDate, getCoverageForDate, getMissedPenaltyForDate, nextWorkday, isOffDay, parseISODate } = core;
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 const VN_OFFSET_MS = 7 * 3600 * 1000; // Asia/Ho_Chi_Minh, không có DST
@@ -15,10 +15,15 @@ export function vietnamToday(nowMs = Date.now()) {
 
 function line(prefix, date, schedule) {
   const members = getMembersForDate(date, schedule);
+  if (!members.length) {
+    const missed = getMissedPenaltyForDate(date, schedule);
+    return `${prefix}: ${missed ? `${missed.name} quên đổ rác (chưa ai đổ hộ)` : "không có người đổ rác"}`;
+  }
   const swapped = members[0].name !== getRotationMember(date, schedule).name;
   const penalty = getPenaltyForDate(date, schedule);
+  const coverage = getCoverageForDate(date, schedule);
   const who = members.map((m) => `<@${m.discordId}> (**${m.name}**)`).join(" + ");
-  return `${prefix}: ${who}${swapped ? " (đổi lịch)" : ""}${penalty ? " (đổ phạt)" : ""}`;
+  return `${prefix}: ${who}${coverage ? " (đổ hộ)" : swapped ? " (đổi lịch)" : ""}${penalty ? " (đổ phạt)" : ""}`;
 }
 
 function shortDate(d) {
@@ -31,9 +36,11 @@ function shortDate(d) {
 export function buildPenaltyMessage(schedule, penalty) {
   const m = schedule.members.find((x) => x.name === penalty.name);
   const days = penalty.days.map((iso) => `**${shortDate(parseISODate(iso))}**`).join(", ");
+  const coveringMember = penalty.coveredBy && schedule.members.find((x) => x.name === penalty.coveredBy);
   return (
     `🚨 **Phạt quên đổ rác**\n\n` +
     `<@${m.discordId}> (**${m.name}**) đã quên đổ rác ngày ${shortDate(parseISODate(penalty.date))}.\n` +
+    (coveringMember ? `<@${coveringMember.discordId}> (**${coveringMember.name}**) chuyển lượt đổ của mình lên ngày này để đổ hộ; lượt cũ được bỏ qua.\n` : "Ngày đó không có ai đổ hộ.\n") +
     `Hình phạt: đổ bù + đổ phạt ${penalty.days.length} ngày liền: ${days}.\n` +
     `Lịch của những người phía sau được lùi lại tương ứng.`
   );

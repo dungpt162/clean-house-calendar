@@ -6,36 +6,23 @@
 <meta name="robots" content="noindex">
 <title>Quản lý Lịch Đổ Rác</title>
 <link rel="stylesheet" href="../style.css">
-<style>
-  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-  .card h2 { margin: 0 0 12px; font-size: 1.05rem; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .row label { flex: 0 0 90px; color: var(--muted); font-size: .9rem; }
-  .row .val { flex: 1; min-width: 0; }
-  input, select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
-  button.btn { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
-  button.btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-  button.btn.danger { background: transparent; color: #dc2626; border: 1px solid #dc2626; padding: 4px 10px; }
-  button.btn:disabled { opacity: .5; cursor: default; }
-  .hint { color: var(--muted); font-size: .85rem; margin: 6px 0 0; }
-  .status { min-height: 1.4em; font-size: .9rem; margin: 8px 0 0; }
-  .status.ok { color: #16a34a; }
-  .status.err { color: #dc2626; }
-  .ov-list { list-style: none; padding: 0; margin: 0; }
-  .ov-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-  .ov-list li:last-child { border-bottom: 0; }
-  .hidden { display: none; }
-</style>
+<link rel="stylesheet" href="cms.css">
 </head>
-<body>
-  <div class="app">
-    <header class="header">
-      <h1>⚙️ Quản lý Lịch Đổ Rác</h1>
-      <p class="subtitle"><a href="../">← Về trang lịch</a></p>
+<body class="cms-body">
+  <div class="cms-shell">
+    <header class="cms-header">
+      <div>
+        <p class="eyebrow">CLEAN HOUSE / QUẢN TRỊ</p>
+        <h1>Quản lý lịch đổ rác</h1>
+        <p class="cms-subtitle">Phân công, xử lý phát sinh và theo dõi thay đổi tại một nơi.</p>
+      </div>
+      <a class="back-link" href="../">← Xem lịch chung</a>
     </header>
 
-    <section class="card" id="loginCard">
-      <h2>Đăng nhập</h2>
+    <section class="card login-card" id="loginCard">
+      <span class="card-tag">DÀNH CHO QUẢN TRỊ</span>
+      <h2>Đăng nhập để chỉnh lịch</h2>
+      <p class="hint">Nhập mật khẩu quản trị để mở các công cụ bên dưới.</p>
       <form class="row" id="loginForm">
         <label for="password">Mật khẩu</label>
         <input id="password" type="password" autocomplete="current-password" required>
@@ -45,9 +32,28 @@
     </section>
 
     <div id="main" class="hidden">
-      <p class="hint" style="text-align:right"><button class="btn secondary" id="logoutBtn">Đăng xuất</button></p>
-      <section class="card">
-        <h2>1. Đổ hộ (hoán đổi ngày)</h2>
+      <div class="workspace-top">
+        <div>
+          <p class="eyebrow">KHÔNG GIAN LÀM VIỆC</p>
+          <h2>Điều chỉnh lịch trực</h2>
+          <p>Chọn tác vụ, kiểm tra người được phân công và lưu thay đổi.</p>
+        </div>
+        <button class="btn secondary" id="logoutBtn">Đăng xuất</button>
+      </div>
+      <nav class="cms-nav" aria-label="Đi tới công cụ">
+        <a href="#swapSection">Đổi lịch</a>
+        <a href="#helperSection">Đổ chung</a>
+        <a href="#penaltySection">Phạt quên</a>
+        <a href="#holidaySection">Ngày nghỉ</a>
+        <a href="#memberSection">Thành viên</a>
+        <a href="#absenceSection">Vắng mặt</a>
+        <a href="#notifySection">Thông báo</a>
+        <a href="#auditSection">Lịch sử</a>
+      </nav>
+      <div class="cards-grid">
+      <section class="card edit-card" id="swapSection">
+        <span class="card-tag">01 / PHÂN CÔNG</span>
+        <h2>Hoán đổi ngày trực</h2>
         <div class="row">
           <label for="swapDateA">Ngày A</label>
           <input id="swapDateA" type="date">
@@ -65,13 +71,15 @@
         <p class="status" id="swapStatus"></p>
       </section>
 
-      <section class="card">
+      <section class="card record-card">
+        <span class="card-tag">ĐÃ THỰC HIỆN</span>
         <h2>Các lần hoán đổi</h2>
         <ul class="ov-list" id="swapList"></ul>
       </section>
 
-      <section class="card">
-        <h2>2. Đổ chung (thêm người phụ)</h2>
+      <section class="card edit-card" id="helperSection">
+        <span class="card-tag">02 / PHÂN CÔNG</span>
+        <h2>Đổ chung</h2>
         <div class="row">
           <label for="helperDate">Ngày</label>
           <input id="helperDate" type="date">
@@ -91,13 +99,15 @@
         <p class="status" id="helperStatus"></p>
       </section>
 
-      <section class="card">
+      <section class="card record-card">
+        <span class="card-tag">ĐÃ THỰC HIỆN</span>
         <h2>Các ngày đổ chung</h2>
         <ul class="ov-list" id="helperList"></ul>
       </section>
 
-      <section class="card">
-        <h2>3. Phạt quên đổ rác</h2>
+      <section class="card edit-card" id="penaltySection">
+        <span class="card-tag">03 / PHÁT SINH</span>
+        <h2>Phạt quên đổ rác</h2>
         <div class="row">
           <label for="penaltyDate">Ngày quên</label>
           <input id="penaltyDate" type="date">
@@ -106,6 +116,14 @@
         <div class="row">
           <label for="penaltyMember">Người quên</label>
           <select id="penaltyMember"></select>
+        </div>
+        <div class="row">
+          <label for="penaltyCover">Đổ hộ</label>
+          <span class="val"><input id="penaltyCover" type="checkbox" style="flex:none"> Có người đổ hộ ngày quên</span>
+        </div>
+        <div class="row hidden" id="penaltyCoverRow">
+          <label for="penaltyCoverMember">Người đổ hộ</label>
+          <select id="penaltyCoverMember"></select>
         </div>
         <div class="row">
           <label for="penaltyStart">Phạt từ</label>
@@ -122,17 +140,19 @@
         <div class="row">
           <button class="btn" id="penaltyBtn">Ghi phạt</button>
         </div>
-        <p class="hint">Người quên phải đổ 2 ngày làm việc liền nhau (1 ngày đổ bù + 1 ngày phạt), mặc định bắt đầu từ ngày làm việc kế tiếp. Vòng xoay tạm dừng trong những ngày này nên người phía sau được lùi lại; lượt thường của người bị phạt giữ nguyên.</p>
+        <p class="hint">Ngày quên được ghi là chưa có ai đổ. Người quên vẫn phải đổ 2 ngày làm việc liền nhau (1 ngày đổ bù + 1 ngày phạt). Nếu có người đổ hộ, lượt thường tiếp theo của họ được chuyển lên ngày quên và bỏ qua khi vòng xoay tới lượt đó. Người quên không nhận lượt của người đổ hộ.</p>
         <p class="status" id="penaltyStatus"></p>
       </section>
 
-      <section class="card">
+      <section class="card record-card">
+        <span class="card-tag">ĐÃ GHI NHẬN</span>
         <h2>Các lần phạt</h2>
         <ul class="ov-list" id="penaltyList"></ul>
       </section>
 
-      <section class="card">
-        <h2>4. Đánh dấu ngày nghỉ</h2>
+      <section class="card edit-card" id="holidaySection">
+        <span class="card-tag">04 / PHÁT SINH</span>
+        <h2>Đánh dấu ngày nghỉ</h2>
         <div class="row">
           <label for="holidayDate">Ngày nghỉ</label>
           <input id="holidayDate" type="date">
@@ -145,13 +165,15 @@
         <p class="status" id="holidayStatus"></p>
       </section>
 
-      <section class="card">
+      <section class="card record-card">
+        <span class="card-tag">ĐÃ THỰC HIỆN</span>
         <h2>Các ngày nghỉ</h2>
         <ul class="ov-list" id="holidayList"></ul>
       </section>
 
-      <section class="card">
-        <h2>5. Thêm nhân viên</h2>
+      <section class="card edit-card" id="memberSection">
+        <span class="card-tag">05 / THÀNH VIÊN</span>
+        <h2>Thêm thành viên</h2>
         <div class="row">
           <label for="memberName">Tên</label>
           <input id="memberName" type="text" maxlength="40">
@@ -175,15 +197,17 @@
         <p class="status" id="memberStatus"></p>
       </section>
 
-      <section class="card">
-        <h2>Danh sách nhân viên</h2>
+      <section class="card record-card">
+        <span class="card-tag">DANH SÁCH</span>
+        <h2>Thành viên hiện có</h2>
         <ul class="ov-list" id="memberList"></ul>
         <p class="hint">Sửa màu / Discord ID rồi bấm Lưu. "Nghỉ việc sau ngày" là ngày cuối cùng còn trong vòng xoay; để trống nếu còn làm. Tên không đổi được (vì gắn với lịch đã có).</p>
         <p class="status" id="memberEditStatus"></p>
       </section>
 
-      <section class="card">
-        <h2>6. Vắng mặt (nghỉ phép, công tác)</h2>
+      <section class="card edit-card" id="absenceSection">
+        <span class="card-tag">06 / THÀNH VIÊN</span>
+        <h2>Vắng mặt</h2>
         <div class="row">
           <label for="absMember">Nhân viên</label>
           <select id="absMember"></select>
@@ -203,24 +227,28 @@
         <p class="status" id="absStatus"></p>
       </section>
 
-      <section class="card">
+      <section class="card record-card">
+        <span class="card-tag">ĐÃ GHI NHẬN</span>
         <h2>Các lần vắng mặt</h2>
         <ul class="ov-list" id="absList"></ul>
       </section>
 
-      <section class="card">
-        <h2>7. Bắn thông báo Discord</h2>
+      <section class="card edit-card" id="notifySection">
+        <span class="card-tag">07 / THÔNG BÁO</span>
+        <h2>Thông báo Discord</h2>
         <div class="row">
           <button class="btn secondary" id="notifyBtn">Gửi thông báo lịch hôm nay</button>
         </div>
         <p class="hint">Gửi ngay tin nhắn lịch hôm nay lên Discord. Thứ 7, Chủ nhật sẽ không gửi.</p>
         <p class="status" id="notifyStatus"></p>
       </section>
-      <section class="card">
+      <section class="card record-card" id="auditSection">
+        <span class="card-tag">NHẬT KÝ</span>
         <h2>Lịch sử thay đổi</h2>
         <ul class="ov-list" id="auditList"></ul>
         <p class="hint">200 thao tác gần nhất.</p>
       </section>
+      </div>
     </div>
   </div>
 
@@ -294,7 +322,10 @@ function describeDay(iso) {
   const d = parseISODate(iso);
   if (isWeekend(d)) return "Cuối tuần (không đổ rác)";
   if (isOffDay(d, schedule)) return "Ngày nghỉ (không đổ rác)";
-  return getMembersForDate(d, schedule).map((m) => m.name).join(" + ");
+  const missed = getMissedPenaltyForDate(d, schedule);
+  const members = getMembersForDate(d, schedule);
+  return members.length ? members.map((m) => m.name).join(" + ") :
+    missed ? `${missed.name} quên đổ — chưa ai đổ hộ` : "Chưa có người đổ";
 }
 
 function renderSwapPreview() {
@@ -330,7 +361,8 @@ function penaltyDaysFor(startIso) {
 function onPenaltyDateChange() {
   const iso = $("penaltyDate").value;
   if (iso && !isOffDay(parseISODate(iso), schedule)) {
-    $("penaltyMember").value = getMemberForDate(parseISODate(iso), schedule).name;
+    const assigned = getMemberForDate(parseISODate(iso), schedule) || getRotationMember(parseISODate(iso), schedule);
+    if (assigned) $("penaltyMember").value = assigned.name;
     $("penaltyStart").value = defaultPenaltyStart(iso);
   }
   renderPenaltyPreview();
@@ -338,6 +370,18 @@ function onPenaltyDateChange() {
 
 function renderPenaltyPreview() {
   $("penaltyWho").textContent = describeDay($("penaltyDate").value);
+  const cover = $("penaltyCover").checked;
+  $("penaltyCoverRow").classList.toggle("hidden", !cover);
+  const sel = $("penaltyCoverMember");
+  const prev = sel.value;
+  const date = $("penaltyDate").value;
+  const forgotten = $("penaltyMember").value;
+  sel.innerHTML = "";
+  schedule.members.filter((m) => m.name !== forgotten &&
+    (!m.from || m.from <= date) && (!m.to || m.to >= date) &&
+    !(schedule.absences || []).some((a) => a.name === m.name && a.from <= date && date <= a.to)
+  ).forEach((m) => sel.add(new Option(m.name, m.name)));
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
   const start = $("penaltyStart").value;
   $("penaltyDays").textContent = start ? penaltyDaysFor(start).map(shortDate).join(", ") : "—";
 }
@@ -409,7 +453,7 @@ function renderPenaltyList() {
   list.innerHTML = "";
   const todayIso = toISODate(new Date());
   [...schedule.penalties].sort((a, b) => b.date.localeCompare(a.date)).forEach((p) => {
-    const text = `${p.name} quên ngày ${shortDate(p.date)} → đổ ${p.days.map(shortDate).join(", ")}`;
+    const text = `${p.name} quên ngày ${shortDate(p.date)}${p.coveredBy ? ` (${p.coveredBy} chuyển lượt lên đổ hộ)` : " (chưa ai đổ hộ)"} → đổ bù + phạt ${p.days.map(shortDate).join(", ")}`;
     rowWithCancel(list, text, p.days.every((d) => d < todayIso), (btn) => removePenalty(p.date, p.name, btn));
   });
   if (!schedule.penalties.length) emptyItem(list, "Chưa có lần phạt nào.");
@@ -435,20 +479,19 @@ function renderMemberList() {
   const todayIso = toISODate(new Date());
   schedule.members.forEach((m) => {
     const li = document.createElement("li");
-    li.style.flexWrap = "wrap";
+    li.className = "member-row";
     const mk = (tag, attrs) => Object.assign(document.createElement(tag), attrs);
     const nameSpan = mk("span", { textContent: m.name + (m.from ? ` (vào ${m.from})` : "") });
-    nameSpan.style.flex = "1 1 140px";
     if (m.to && m.to < todayIso) nameSpan.style.opacity = "0.5";
     const color = mk("input", { type: "color", value: m.color });
-    color.style.cssText = "flex:none;width:44px;padding:2px";
-    const discord = mk("input", { type: "text", value: m.discordId, placeholder: "Discord ID" });
-    discord.style.flex = "1 1 150px";
+    color.title = `Màu của ${m.name}`;
+    const discord = mk("input", { type: "text", value: m.discordId, placeholder: "Discord ID", title: `Discord ID của ${m.name}` });
     const to = mk("input", { type: "date", value: m.to || "", title: "Nghỉ việc sau ngày" });
-    to.style.flex = "0 1 140px";
+    const dateLabel = mk("label", { className: "member-date" });
+    dateLabel.append(mk("span", { textContent: "Nghỉ việc sau ngày" }), to);
     const save = mk("button", { className: "btn", textContent: "Lưu" });
     save.addEventListener("click", () => saveMember(m.name, color.value, discord.value.trim(), to.value, save));
-    [nameSpan, color, discord, to, save].forEach((el) => li.appendChild(el));
+    [nameSpan, color, discord, dateLabel, save].forEach((el) => li.appendChild(el));
     list.appendChild(li);
   });
 }
@@ -509,12 +552,19 @@ async function swapDays() {
   if (isOffDay(parseISODate(a), schedule) || isOffDay(parseISODate(b), schedule)) {
     return setStatus("swapStatus", "Thứ 7, Chủ nhật, ngày nghỉ không đổ rác.", "err");
   }
+  if (schedule.penalties.some((p) => p.date === a || p.date === b)) {
+    return setStatus("swapStatus", "Ngày đã ghi quên đổ rác; hãy huỷ phạt trước khi đổi lịch.", "err");
+  }
   $("swapBtn").disabled = true;
   setStatus("swapStatus", "Đang lưu...");
   try {
     await commitChange(() => {
+      if (schedule.penalties.some((p) => p.date === a || p.date === b)) {
+        throw new Error("Ngày đã ghi quên đổ rác; hãy huỷ phạt trước khi đổi lịch.");
+      }
       const mainA = getMemberForDate(parseISODate(a), schedule);
       const mainB = getMemberForDate(parseISODate(b), schedule);
+      if (!mainA || !mainB) throw new Error("Một trong hai ngày không có người đổ rác.");
       if (mainA.name === mainB.name) throw new Error("Hai ngày đang cùng một người, không cần hoán đổi.");
       setOverride(a, mainB.name);
       setOverride(b, mainA.name);
@@ -548,6 +598,7 @@ async function addHelper() {
   try {
     await commitChange(() => {
       const main = getMemberForDate(parseISODate(iso), schedule);
+      if (!main) throw new Error("Ngày này chưa có ai đổ; hãy chọn người đổ hộ trong mục phạt.");
       if (main.name === name) throw new Error("Người này đang là người đổ chính của ngày đó.");
       const list = schedule.helpers[iso] || [];
       if (list.includes(name)) throw new Error("Người này đã được thêm làm người phụ ngày đó.");
@@ -578,17 +629,22 @@ async function addPenalty() {
   const date = $("penaltyDate").value;
   const name = $("penaltyMember").value;
   const start = $("penaltyStart").value;
+  const coveredBy = $("penaltyCover").checked ? $("penaltyCoverMember").value : null;
   if (!date || !start) return setStatus("penaltyStatus", "Hãy chọn ngày quên và ngày bắt đầu phạt.", "err");
   if (isOffDay(parseISODate(date), schedule)) return setStatus("penaltyStatus", "Thứ 7, Chủ nhật, ngày nghỉ không đổ rác.", "err");
   if (start <= date) return setStatus("penaltyStatus", "Ngày bắt đầu phạt phải sau ngày quên.", "err");
+  if ($("penaltyCover").checked && !coveredBy) return setStatus("penaltyStatus", "Hãy chọn người đổ hộ.", "err");
   $("penaltyBtn").disabled = true;
   setStatus("penaltyStatus", "Đang lưu...");
   try {
     await commitChange(() => {
-      if (schedule.penalties.some((p) => p.date === date && p.name === name)) {
-        throw new Error("Đã ghi phạt người này cho ngày đó.");
+      if (schedule.penalties.some((p) => p.date === date)) {
+        throw new Error("Ngày này đã được ghi quên đổ rác.");
       }
-      schedule.penalties.push({ date, name, days: penaltyDaysFor(start) });
+      if (getMemberForDate(parseISODate(date), schedule)?.name !== name || (coveredBy && schedule.overrides[date])) {
+        throw new Error("Người quên không đúng lịch hoặc ngày đổ hộ đã được đổi lịch; hãy kiểm tra lại.");
+      }
+      schedule.penalties.push({ date, name, days: penaltyDaysFor(start), ...(coveredBy ? { coveredBy } : {}) });
     }, "penaltyStatus");
     if ($("penaltyNotify").checked) {
       setStatus("penaltyStatus", "Đã lưu. Đang gửi thông báo...");
@@ -629,6 +685,9 @@ async function addHoliday() {
       if (schedule.holidays.includes(iso)) throw new Error("Ngày này đã được đánh dấu nghỉ.");
       if (schedule.penalties.some((p) => p.days.includes(iso))) {
         throw new Error("Ngày này đang có lịch đổ phạt, hãy huỷ phạt trước.");
+      }
+      if (schedule.penalties.some((p) => p.date === iso)) {
+        throw new Error("Ngày này đã ghi quên đổ rác, hãy huỷ phạt trước.");
       }
       schedule.holidays.push(iso);
       schedule.holidays.sort();
@@ -816,6 +875,8 @@ $("swapDateA").addEventListener("change", () => { if (schedule) renderSwapPrevie
 $("swapDateB").addEventListener("change", () => { if (schedule) renderSwapPreview(); });
 $("helperDate").addEventListener("change", () => { if (schedule) renderHelperPreview(); });
 $("penaltyDate").addEventListener("change", () => { if (schedule) onPenaltyDateChange(); });
+$("penaltyMember").addEventListener("change", () => { if (schedule) renderPenaltyPreview(); });
+$("penaltyCover").addEventListener("change", () => { if (schedule) renderPenaltyPreview(); });
 $("penaltyStart").addEventListener("change", () => { if (schedule) renderPenaltyPreview(); });
 $("holidayDate").addEventListener("change", () => { if (schedule) renderHolidayPreview(); });
 $("holidayBtn").addEventListener("click", addHoliday);

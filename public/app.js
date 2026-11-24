@@ -3,7 +3,8 @@
 let schedule = { startDate: "2026-09-23", members: [], overrides: {} };
 const membersFor = (date) => getMembersForDate(date, schedule);
 const namesOf = (members) => members.map((m) => m.name).join(" + ");
-const penaltyMark = (date) => (getPenaltyForDate(date, schedule) ? " ⚠️ phạt" : "");
+const dutyMark = (date) => getCoverageForDate(date, schedule) ? " (đổ hộ)" :
+  (getPenaltyForDate(date, schedule) ? " ⚠️ phạt" : "");
 
 const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const MONTH_FMT = new Intl.DateTimeFormat("vi-VN", { month: "long", year: "numeric" });
@@ -21,13 +22,17 @@ function renderToday() {
   const tomorrowMembers = membersFor(tomorrow);
 
   document.getElementById("todayDate").textContent = LONG_DATE_FMT.format(today);
-  document.getElementById("todayPerson").textContent = todayMembers.length ? namesOf(todayMembers) + penaltyMark(today) : "Nghỉ (không đổ rác)";
-  document.getElementById("todayPerson").style.color = todayMembers.length ? todayMembers[0].color : "";
+  const missedToday = getMissedPenaltyForDate(today, schedule);
+  document.getElementById("todayPerson").textContent = todayMembers.length ? namesOf(todayMembers) + dutyMark(today) :
+    missedToday ? `${missedToday.name} quên đổ — chưa ai đổ hộ` : "Nghỉ (không đổ rác)";
+  document.getElementById("todayPerson").style.color = todayMembers.length ? todayMembers[0].color : missedToday ? "#dc2626" : "";
 
   document.getElementById("tomorrowLabel").textContent = isTomorrow ? "Ngày mai" : "Ngày đổ rác kế tiếp";
   document.getElementById("tomorrowDate").textContent = LONG_DATE_FMT.format(tomorrow);
-  document.getElementById("tomorrowPerson").textContent = namesOf(tomorrowMembers) + penaltyMark(tomorrow);
-  document.getElementById("tomorrowPerson").style.color = tomorrowMembers[0].color;
+  const missedTomorrow = getMissedPenaltyForDate(tomorrow, schedule);
+  document.getElementById("tomorrowPerson").textContent = tomorrowMembers.length ? namesOf(tomorrowMembers) + dutyMark(tomorrow) :
+    missedTomorrow ? `${missedTomorrow.name} quên đổ — chưa ai đổ hộ` : "Nghỉ (không đổ rác)";
+  document.getElementById("tomorrowPerson").style.color = tomorrowMembers[0]?.color || (missedTomorrow ? "#dc2626" : "");
 }
 
 function renderUpcoming() {
@@ -55,10 +60,12 @@ function renderUpcoming() {
         personSpan.appendChild(dot);
         personSpan.appendChild(document.createTextNode(member.name));
       });
-      personSpan.appendChild(document.createTextNode(penaltyMark(d)));
+      personSpan.appendChild(document.createTextNode(dutyMark(d)));
     } else {
-      personSpan.textContent = "Nghỉ";
-      li.style.opacity = "0.5";
+      const missed = getMissedPenaltyForDate(d, schedule);
+      personSpan.textContent = missed ? `${missed.name} quên đổ — chưa ai đổ hộ` : "Nghỉ";
+      if (missed) personSpan.style.color = "#dc2626";
+      else li.style.opacity = "0.5";
     }
 
     li.appendChild(dateSpan);
@@ -107,9 +114,13 @@ function renderCalendar() {
 
     const cell = document.createElement("div");
     cell.className = "day-cell";
+    const missed = getMissedPenaltyForDate(date, schedule);
     if (member) {
       cell.style.background = member.color + "22";
       cell.style.color = member.color;
+    } else if (missed) {
+      cell.style.background = "#dc262622";
+      cell.style.color = "#dc2626";
     } else {
       cell.style.opacity = "0.45";
     }
@@ -122,10 +133,11 @@ function renderCalendar() {
     num.textContent = String(day);
     cell.appendChild(num);
 
-    if (member) {
+    if (member || missed) {
       const person = document.createElement("span");
       person.className = "day-person";
-      person.textContent = namesOf(members) + (getPenaltyForDate(date, schedule) ? " ⚠️" : "");
+      person.textContent = missed && !member ? `${missed.name} quên — chưa ai đổ` :
+        namesOf(members) + (getCoverageForDate(date, schedule) ? " (đổ hộ)" : getPenaltyForDate(date, schedule) ? " ⚠️" : "");
       cell.appendChild(person);
     }
     grid.appendChild(cell);

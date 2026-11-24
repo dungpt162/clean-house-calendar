@@ -7,9 +7,10 @@
 //   members:   thành viên gốc + thành viên thêm sau có `from` (ngày bắt đầu vào vòng xoay, xếp cuối vòng);
 //              `to` (nếu có) là ngày cuối cùng còn trong vòng xoay (nghỉ việc)
 //   absences:  [{ name, from, to }]         vắng mặt theo khoảng ngày: vòng xoay bỏ qua người đó (không nợ lượt)
-//   penalties: [{ date, name, days: ["YYYY-MM-DD", ...] }]
+//   penalties: [{ date, name, days: ["YYYY-MM-DD", ...], coveredBy?: "Tên" }]
 //              người quên đổ rác ngày `date` phải đổ bù + đổ phạt vào các ngày `days`; vòng xoay
 //              tạm dừng ở những ngày đó (người phía sau lùi lại), lượt thường của người bị phạt giữ nguyên.
+//              ngày quên là lượt bỏ trống; nếu coveredBy có mặt, lượt thường tiếp theo của họ chuyển lên ngày quên.
 function stripTime(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -74,14 +75,15 @@ function penaltyDayMap(schedule) {
 }
 
 // `count` ngày làm việc liên tiếp tính từ `start` (gồm cả start nếu là ngày làm việc),
-// bỏ qua những ngày đã là ngày phạt của mục khác.
+// tìm một khoảng ngày liên tiếp không trùng những ngày phạt của mục khác.
 function nextPenaltyDays(start, count, schedule) {
   const taken = penaltyDayMap(schedule);
   const days = [];
   let d = stripTime(start);
   if (isOffDay(d, schedule)) d = nextWorkday(d, schedule);
   while (days.length < count) {
-    if (!taken.has(toISODate(d))) days.push(toISODate(d));
+    if (taken.has(toISODate(d))) days.length = 0;
+    else days.push(toISODate(d));
     d = nextWorkday(d, schedule);
   }
   return days;
@@ -118,6 +120,7 @@ function extendRotation(schedule, target) {
   }
   const helpers = schedule.helpers || {};
   const penaltyDays = penaltyDayMap(schedule);
+  const coverages = new Map((schedule.penalties || []).filter((p) => p.coveredBy).map((p) => [p.date, p.coveredBy]));
   while (c.next <= target) {
     const iso = toISODate(c.next);
     const members = activeMembers(schedule.members, iso);
@@ -148,9 +151,13 @@ function extendRotation(schedule, target) {
       c.ptr += 1;
     }
     c.byDate.set(iso, main);
+    const coveredBy = coverages.get(iso);
     (helpers[iso] || []).forEach((name) => {
-      if (name !== main.name) c.credits[name] = (c.credits[name] || 0) + 1;
+      if (name !== main.name && name !== coveredBy) c.credits[name] = (c.credits[name] || 0) + 1;
     });
+    if (coveredBy && coveredBy !== main.name) {
+      c.credits[coveredBy] = (c.credits[coveredBy] || 0) + 1;
+    }
     c.next = nextWorkday(c.next, schedule);
   }
 }
@@ -170,10 +177,24 @@ function getRotationMember(date, schedule) {
   return rotationCache.byDate.get(toISODate(day));
 }
 
-// Người đổ chính thực tế: ưu tiên override (hoán đổi), sau đó tới vòng xoay.
+function getMissedPenaltyForDate(date, schedule) {
+  return (schedule.penalties || []).find((p) => p.date === toISODate(date)) || null;
+}
+
+function getCoverageForDate(date, schedule) {
+  const missed = getMissedPenaltyForDate(date, schedule);
+  return missed && missed.coveredBy ? missed : null;
+}
+
+// Người đổ chính thực tế: ưu tiên đổ hộ, rồi override (hoán đổi), sau đó tới vòng xoay.
 function getMemberForDate(date, schedule) {
   if (isOffDay(date, schedule)) return null;
-  const overrideName = (schedule.overrides || {})[toISODate(date)];
+  const iso = toISODate(date);
+  const missed = getMissedPenaltyForDate(date, schedule);
+  if (missed) {
+    return missed.coveredBy ? schedule.members.find((m) => m.name === missed.coveredBy) || null : null;
+  }
+  const overrideName = (schedule.overrides || {})[iso];
   if (overrideName) {
     const m = schedule.members.find((x) => x.name === overrideName);
     if (m) return m;
@@ -185,6 +206,7 @@ function getMemberForDate(date, schedule) {
 function getHelpersForDate(date, schedule) {
   if (isOffDay(date, schedule)) return [];
   const main = getMemberForDate(date, schedule);
+  if (!main) return [];
   const names = (schedule.helpers || {})[toISODate(date)] || [];
   return names
     .map((name) => schedule.members.find((m) => m.name === name))
@@ -209,6 +231,7 @@ function getMembersForDate(date, schedule) {
 if (typeof module !== "undefined") {
   module.exports = {
     getMemberForDate, getMembersForDate, getHelpersForDate, getRotationMember,
-    getPenaltyForDate, nextPenaltyDays, nextWorkday, isWeekend, isOffDay, toISODate, parseISODate,
+    getPenaltyForDate, getCoverageForDate, getMissedPenaltyForDate,
+    nextPenaltyDays, nextWorkday, isWeekend, isOffDay, toISODate, parseISODate,
   };
 }
