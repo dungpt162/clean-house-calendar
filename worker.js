@@ -92,9 +92,11 @@ function validatePenalties(penalties, names, schedule, previousPenalties = []) {
         return "Ngày đổ hộ đã có thay đổi lịch khác";
       }
       coveredDates.add(p.date);
-      const assigned = core.getRotationMember(core.parseISODate(p.date), schedule);
-      if (!assigned || assigned.name !== p.name) return "Người quên không đúng lịch ngày đó";
       const previous = previousPenalties.find((item) => item.date === p.date && item.name === p.name);
+      if (!previous) {
+        const assigned = core.getRotationMember(core.parseISODate(p.date), schedule);
+        if (!assigned || assigned.name !== p.name) return "Người quên không đúng lịch ngày đó";
+      }
       const unchangedDays = previous && JSON.stringify(previous.days) === JSON.stringify(p.days);
       if (!unchangedDays && (p.days.length !== 2 ||
           core.toISODate(core.nextWorkday(core.parseISODate(p.days[0]), schedule)) !== p.days[1])) {

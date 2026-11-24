@@ -133,4 +133,16 @@ test("API stores coverage and rejects conflicting or inactive covering members",
   res = await put(state([]));
   assert.equal(res.status, 200);
   assert.equal(who("2026-11-23", await res.json()), "A");
+
+  const historical = { date: "2026-11-24", name: "B", days: ["2026-11-25", "2026-11-26"] };
+  const shifted = state([historical], { helpers: { "2026-11-23": ["B"] } });
+  res = await put(shifted);
+  assert.equal(res.status, 200);
+  assert.equal(core.getRotationMember(date("2026-11-24"), await res.json()).name, "C");
+  res = await put(state([{ ...historical, coveredBy: "C" }], { helpers: shifted.helpers }));
+  assert.equal(res.status, 200);
+  updated = await res.json();
+  assert.equal(updated.penalties[0].name, "B");
+  assert.equal(who("2026-11-24", updated), "C");
+  assert.deepEqual(updated.penalties[0].days, historical.days);
 });
